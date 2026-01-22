@@ -2,19 +2,111 @@
 
 **Last Updated:** January 21, 2026  
 **Agent Zero Version:** v0.9.7 (November 2024)  
+**Last Verified Against GitHub Issues:** January 21, 2026  
 **Target Audience:** Non-expert beginners using self-hosted Agent Zero on Windows/Linux/macOS
+
+---
+
+## 🚀 Fix 90% of Issues in 5 Minutes
+
+**Before reading the full guide, try these fixes first:**
+
+### 1. Correct Docker Setup
+```bash
+# Stop and recreate with proper configuration
+docker stop agent-zero && docker rm agent-zero
+
+# Linux/macOS
+docker run -d -p 50080:80 \
+  -v ~/agent-zero-data:/a0/usr \
+  --add-host=host.docker.internal:host-gateway \
+  --ulimit nofile=65536:65536 \
+  --name agent-zero agent0ai/agent-zero
+
+# Windows (PowerShell)
+docker run -d -p 50080:80 -v C:\agent-zero-data:/a0/usr --ulimit nofile=65536:65536 --name agent-zero agent0ai/agent-zero
+```
+
+### 2. Fix Connection Issues
+- **API Base URL:** `http://host.docker.internal:11434` (not localhost)
+- **LM Studio:** Load a model first, then enable local server
+- **Test:** `curl http://localhost:11434/api/tags` (from host)
+
+### 3. Fix Memory Errors
+```bash
+docker exec agent-zero rm -rf /a0/memory/*
+docker restart agent-zero
+```
+
+### 4. Fix Most Other Issues
+```bash
+docker restart agent-zero
+```
+
+### 5. Emergency Reset
+```bash
+docker stop agent-zero && docker rm agent-zero
+docker pull agent0ai/agent-zero:latest
+# Then run step 1 again
+```
+
+**Still broken?** Read the detailed sections below.
+
+---
+
+## 📦 Known Safe Defaults
+
+**Copy these exact settings to avoid issues:**
+
+| Component | Recommended Value | Why |
+|-----------|------------------|-----|
+| Ollama version | Latest (0.5+) | Works with Agent Zero v0.9.7+ |
+| Chat model | `llama3.2:1b` or `llama3.2:3b` | Balance of speed/quality |
+| Embedding | `mxbai-embed-large` | Standard, reliable |
+| Docker RAM | 8GB minimum | Prevents OOM crashes |
+| File descriptors | `--ulimit nofile=65536:65536` | Prevents browser crashes |
+| Volume mapping | `-v ~/agent-zero-data:/a0/usr` | Only map /usr, not /a0 |
+| Backup frequency | Before each session | Prevents data loss |
+
+**Don't experiment with these until Agent Zero works reliably.**
+
+---
+
+## 🔄 When to Restart vs Rebuild
+
+**Quick decision guide:**
+
+| Symptom | Action | Command |
+|---------|--------|---------|
+| Agent frozen/unresponsive | Restart container | `docker restart agent-zero` |
+| Socket closed error | Restart container | `docker restart agent-zero` |
+| No terminal output | Restart container | `docker restart agent-zero` |
+| FAISS/Memory errors | Clear memory + restart | `docker exec agent-zero rm -rf /a0/memory/* && docker restart agent-zero` |
+| Changed embedding model | Clear memory + restart | Same as above |
+| Connection errors | Check config, then restart | Fix API URL → restart |
+| File descriptor errors | Recreate with ulimit | Stop → rm → run with `--ulimit` |
+| Persistent breakage | Rebuild container | Pull latest → recreate |
+| Lost data | Restore from backup | Use UI Backup & Restore |
 
 ---
 
 ## ⚠️ Version Scope Notice
 
-This guide reflects observed behavior in **Agent Zero v0.9.7** as of January 2026. Implementation details (model names, vector memory backend, terminal handling) may change in future releases. When behavior differs from this guide, prefer:
+This guide reflects observed behavior in **Agent Zero v0.9.7** as of January 2026. Implementation details (model names, vector memory backend, terminal handling) may change in future releases. 
+
+**⚠️ If using Agent Zero ≥v0.10.x:** Verify against release notes. Terminal subsystem, MCP integration, and memory backend may have different behavior.
+
+When behavior differs from this guide, prefer:
 
 1. Built-in UI tools and features
 2. Official [release notes](https://github.com/agent0ai/agent-zero/releases)
 3. [Official documentation](https://github.com/agent0ai/agent-zero/tree/main/docs)
 
 **Model names** (llama3.2, mxbai-embed-large) are examples and may change. Always verify with `ollama list` and copy exact names.
+
+**Status as of Jan 2026:** Most connection issues (#1) now resolved for users following official quick-start. Socket closed (#648) and FAISS errors remain top complaints.
+
+**FAISS Memory Note:** Vector memory is powerful but fragile. Many experienced users periodically clear `/a0/memory/` (weekly or when switching workflows) to prevent index corruption and improve stability. This is a known trade-off.
 
 ---
 
@@ -247,6 +339,10 @@ Context: 1024 tokens
 | Q8_0  | 80% | Best | ~1.2GB | Slower |
 
 **Ollama uses Q4_K_M by default** - good balance for most systems.
+
+**Important:** Larger model at lower quant often beats smaller model at higher quant (if you have VRAM).
+- Example: 70B Q4 > 8B Q8 (when you have 40GB+ VRAM)
+- Prioritize parameter count, then optimize quantization
 
 **To use specific quant:**
 ```bash
@@ -568,21 +664,21 @@ Before diving into specific errors, follow these golden rules:
 
 ### 🔴 Critical (System Breaking)
 
-1. [Local LLM Connection Failures](#1-local-llm-connection-failures)
-2. [Socket Closed Error](#2-socket-closed-error)
-3. [Data Loss on Crash/Restart](#3-data-loss-on-crashrestart)
-4. [Memory System FAISS Errors](#4-memory-system-faiss-errors)
+1. [Socket Closed Error](#2-socket-closed-error) - **Most reported in 2025-2026**
+2. [Memory FAISS Errors](#4-memory-system-faiss-errors) - **Frequent when switching models**
+3. [Data Loss on Crash](#3-data-loss-on-crashrestart) - **Mostly preventable with volumes**
+4. [Local LLM Connection](#1-local-llm-connection-failures) - **Largely solved in official docs**
 
 ### 🟡 High (Major Functionality Impact)
 
 5. [File Descriptor Exhaustion](#5-file-descriptor-exhaustion)
-6. [Embedding Model Mismatch](#6-embedding-model-mismatch)
-7. [Terminal Output Empty](#7-terminal-output-empty)
+6. [Terminal Output Empty](#7-terminal-output-empty)
+7. [Embedding Model Mismatch](#6-embedding-model-mismatch)
 
 ### 🟢 Medium (Recoverable Issues)
 
-8. [MCP Server Connection Failures](#8-mcp-server-connection-failures)
-9. [Ollama Version Incompatibility](#9-ollama-version-incompatibility)
+8. [MCP Server Connections](#8-mcp-server-connection-failures)
+9. [Ollama Compatibility](#9-ollama-version-incompatibility) - **Mostly resolved with updates**
 
 ---
 
@@ -904,179 +1000,15 @@ rm -rf ~/agent-zero-test-data
 
 ### Automated Validation Script
 
-**Create your own validator (save as `validate-agent-zero.sh`):**
+**Save this as `validate-agent-zero.sh` and run before your first session:**
 
+**Full script available in [Appendix: Diagnostic Tools](#appendix-diagnostic-tools) below.**
+
+**Quick version:**
 ```bash
 #!/bin/bash
-
-echo "🔍 Agent Zero Setup Validator"
-echo "=============================="
-echo ""
-
-ERRORS=0
-WARNINGS=0
-
-# Color codes
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# Function to check status
-check() {
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓${NC} $1"
-    else
-        echo -e "${RED}✗${NC} $1"
-        ((ERRORS++))
-    fi
-}
-
-warn() {
-    echo -e "${YELLOW}⚠${NC} $1"
-    ((WARNINGS++))
-}
-
-# Docker checks
-echo "📦 Checking Docker..."
-docker --version > /dev/null 2>&1
-check "Docker installed"
-
-docker ps > /dev/null 2>&1
-check "Docker running"
-
-CPUS=$(docker info 2>/dev/null | grep "CPUs" | awk '{print $2}')
-if [ "$CPUS" -ge 4 ]; then
-    echo -e "${GREEN}✓${NC} Docker CPUs: $CPUS"
-else
-    warn "Docker CPUs: $CPUS (recommend 4+)"
-fi
-
-MEM=$(docker info 2>/dev/null | grep "Total Memory" | awk '{print $3}')
-echo -e "${GREEN}✓${NC} Docker Memory: $MEM"
-
-# Port check
-echo ""
-echo "🔌 Checking Port 50080..."
-curl -s localhost:50080 > /dev/null 2>&1
-if [ $? -ne 0 ]; then
-    echo -e "${GREEN}✓${NC} Port 50080 available"
-else
-    echo -e "${RED}✗${NC} Port 50080 already in use"
-    ((ERRORS++))
-fi
-
-# Ollama checks
-echo ""
-echo "🤖 Checking Ollama..."
-ollama --version > /dev/null 2>&1
-check "Ollama installed"
-
-ollama list > /dev/null 2>&1
-check "Ollama running"
-
-curl -s http://localhost:11434/api/tags > /dev/null 2>&1
-check "Ollama API responding"
-
-if ollama list 2>/dev/null | grep -q "llama3.2"; then
-    echo -e "${GREEN}✓${NC} Model: llama3.2 installed"
-else
-    warn "Model: llama3.2 not found (run: ollama pull llama3.2:1b)"
-fi
-
-if ollama list 2>/dev/null | grep -q "mxbai-embed-large"; then
-    echo -e "${GREEN}✓${NC} Model: mxbai-embed-large installed"
-else
-    warn "Model: mxbai-embed-large not found (run: ollama pull mxbai-embed-large)"
-fi
-
-# Disk space
-echo ""
-echo "💾 Checking Disk Space..."
-SPACE=$(df -h / | tail -1 | awk '{print $4}' | sed 's/G//')
-if [ "${SPACE%.*}" -ge 20 ]; then
-    echo -e "${GREEN}✓${NC} Free space: ${SPACE}G"
-else
-    warn "Free space: ${SPACE}G (recommend 20G+)"
-fi
-
-# Memory
-echo ""
-echo "🧠 Checking Memory..."
-if command -v free > /dev/null 2>&1; then
-    FREE_MEM=$(free -h | grep Mem | awk '{print $7}')
-    echo -e "${GREEN}✓${NC} Free RAM: $FREE_MEM"
-fi
-
-# Ulimit
-echo ""
-echo "📂 Checking File Descriptor Limit..."
-ULIMIT=$(ulimit -n)
-if [ "$ULIMIT" -ge 4096 ]; then
-    echo -e "${GREEN}✓${NC} File descriptor limit: $ULIMIT"
-elif [ "$ULIMIT" -ge 1024 ]; then
-    warn "File descriptor limit: $ULIMIT (recommend 65536)"
-else
-    echo -e "${RED}✗${NC} File descriptor limit: $ULIMIT (too low!)"
-    ((ERRORS++))
-fi
-
-# Summary
-echo ""
-echo "=============================="
-if [ $ERRORS -eq 0 ] && [ $WARNINGS -eq 0 ]; then
-    echo -e "${GREEN}✓ READY TO START${NC}"
-    echo "All checks passed! You can start Agent Zero."
-elif [ $ERRORS -eq 0 ]; then
-    echo -e "${YELLOW}⚠ READY WITH WARNINGS${NC}"
-    echo "$WARNINGS warning(s) found. Agent Zero will work but may have issues under heavy load."
-else
-    echo -e "${RED}✗ NOT READY${NC}"
-    echo "$ERRORS error(s) and $WARNINGS warning(s) found."
-    echo "Fix the errors above before starting Agent Zero."
-    exit 1
-fi
-```
-
-**To use:**
-```bash
-chmod +x validate-agent-zero.sh
-./validate-agent-zero.sh
-```
-
-**Expected Output (Success):**
-```
-🔍 Agent Zero Setup Validator
-==============================
-
-📦 Checking Docker...
-✓ Docker installed
-✓ Docker running
-✓ Docker CPUs: 8
-✓ Docker Memory: 15.6GiB
-
-🔌 Checking Port 50080...
-✓ Port 50080 available
-
-🤖 Checking Ollama...
-✓ Ollama installed
-✓ Ollama running
-✓ Ollama API responding
-✓ Model: llama3.2 installed
-✓ Model: mxbai-embed-large installed
-
-💾 Checking Disk Space...
-✓ Free space: 45G
-
-🧠 Checking Memory...
-✓ Free RAM: 8.2Gi
-
-📂 Checking File Descriptor Limit...
-✓ File descriptor limit: 65536
-
-==============================
-✓ READY TO START
-All checks passed! You can start Agent Zero.
+# Checks: Docker, Ollama, ports, disk space, RAM, ulimits
+# Run: chmod +x validate-agent-zero.sh && ./validate-agent-zero.sh
 ```
 
 ---
@@ -1393,11 +1325,15 @@ litellm.APIConnectionError: Cannot connect to host 127.0.0.1:11434
 
 **Why it happens:**
 1. **Docker network isolation** - `localhost` inside Docker ≠ `localhost` on your computer
-2. Missing `/v1` in the API path (LM Studio only)
+2. Missing `/v1` in API path (LM Studio only)
 3. Wrong model name
-4. LM Studio server not running or local server not enabled
+4. **LM Studio:** Local server enabled but no model loaded (common mistake)
 5. Ollama not installed or not running
 6. Firewall blocking connections
+
+**⚠️ LM Studio Critical:** Enabling the server is not enough—a model must be actively loaded in LM Studio for the server to work.
+
+**Status (Jan 2026):** Largely resolved for most users following official quick-start. Official docs now emphasize `host.docker.internal` prominently. Still affects unusual WSL setups or very old Docker Desktop versions.
 
 **Fix step-by-step:**
 
@@ -1585,11 +1521,89 @@ Agent becomes unresponsive
 
 **Sources:** [GitHub #923](https://github.com/agent0ai/agent-zero/issues/923), [GitHub #935](https://github.com/agent0ai/agent-zero/issues/935)
 
-**Status:** ⚠️ Unresolved | **Priority:** Critical
+**Status:** ⚠️ Unresolved (Prevention: proper volumes) | **Priority:** High (was Critical, downgraded - mostly preventable)
 
 ---
 
-### 4. Memory System FAISS Errors
+### 4. Memory Recall TypeError (NoneType Concatenation)
+
+**What you'll see:**
+```
+TypeError: can only concatenate str (not "NoneType") to str
+File "/a0/models.py", line 118, in add_chunk
+  self.reasoning += processed_chunk["reasoning_delta"]
+```
+
+**Why it happens:**
+- Utility model returns `None` for `reasoning_delta` instead of string
+- Common with certain local models (Ollama/LM Studio)
+- Model doesn't consistently provide reasoning tokens
+- Parser doesn't handle non-standard output format
+
+**Recent reports (Jan 2026):** Affecting users with local utility models during memory recall operations.
+
+**Fix step-by-step:**
+
+1. **Update Agent Zero (recommended):**
+   ```bash
+   cd /path/to/agent-zero
+   git pull
+   docker-compose down && docker-compose up -d
+   ```
+   Recent updates made parser more resilient.
+
+2. **Switch utility model (quickest):**
+   - Settings → Model Configuration → Utility Model
+   - Change to robust model: `gpt-4o-mini` or `claude-3-5-haiku-latest`
+   - Utility models need reliable formatting compliance
+   - Test with simple memory recall
+
+3. **Manual code patch (if can't update):**
+   - Edit `python/agent_zero/models.py` line 118
+   - Change:
+     ```python
+     self.reasoning += processed_chunk["reasoning_delta"]
+     ```
+   - To:
+     ```python
+     self.reasoning += processed_chunk.get("reasoning_delta") or ""
+     ```
+   - This defaults to empty string if `None`
+
+**What NOT to do:**
+- ❌ Ignoring the error (breaks memory system)
+- ❌ Using unreliable models for utility tasks
+- ❌ Disabling memory entirely (loses agent capability)
+
+**Prevention:**
+- Use well-tested models for utility tasks
+- Keep Agent Zero updated
+- Test memory operations after model changes
+
+**Optimize Memory Performance:**
+
+```bash
+# In .env or config.json
+MEMORY_AUTO_RECALL_DELAYED=True
+MEMORY_QUERY_PREPARATION_ENABLED=True
+MEMORY_POST_FILTERING_ENABLED=False
+MEMORY_SIMILARITY_THRESHOLD=0.6  # Lower (0.5-0.6) for better recall
+MEMORY_AUTO_RECALL_INTERVAL=5    # Higher (5-10) to reduce costs
+```
+
+**Settings adjustments:**
+- **Lower similarity threshold** (0.5-0.6): Agent recalls more memories
+- **Increase history length** (15000): Better context for search queries
+- **Disable AI query prep**: Uses raw message as search (faster, cheaper)
+- **Increase recall interval** (5-10): Checks memory less frequently
+
+**Sources:** Agent Zero Discord Support Bot (Jan 2026), [docs/architecture.md](https://github.com/agent0ai/agent-zero/blob/main/docs/architecture.md)
+
+**Status:** ✅ Fixed in recent updates (Manual patch available) | **Priority:** High
+
+---
+
+### 5. Memory System FAISS Errors
 
 **What you'll see:**
 ```
@@ -1902,45 +1916,51 @@ API calls fail with newer Ollama versions
 - API endpoint changes in some Ollama versions
 - Specific Agent Zero versions may have issues with certain Ollama versions
 
+**Status (Jan 2026):** Largely resolved. Most users on Ollama ≥0.5.x + Agent Zero ≥v0.9.7 report no issues after updating both components.
+
 **Fix step-by-step:**
 
-1. **Check versions:**
+1. **Update both components (recommended):**
    ```bash
-   ollama --version
-   docker exec agent-zero cat /a0/version.txt  # Agent Zero version
-   ```
-
-2. **Update Agent Zero to latest (v0.9.7+):**
-   ```bash
+   # Update Ollama
+   curl -fsSL https://ollama.com/install.sh | sh
+   
+   # Update Agent Zero
    docker pull agent0ai/agent-zero:latest
    docker stop agent-zero && docker rm agent-zero
    # Restart with same command as before
    ```
 
-3. **Check GitHub for compatibility:**
+2. **Check versions:**
+   ```bash
+   ollama --version
+   docker exec agent-zero cat /a0/version.txt  # Agent Zero version
+   ```
+
+3. **Verify compatibility:**
    - Visit: https://github.com/agent0ai/agent-zero/releases
    - Review release notes for Ollama compatibility
+   - Most combinations now work after updating
 
 4. **If still issues:**
    - Report on GitHub with both version numbers
    - Check if others report same combination
 
 **What NOT to do:**
-- ❌ Auto-updating Ollama without testing compatibility
-- ❌ Assuming all version combinations work
-- ❌ Downgrading without checking if fix exists
+- ❌ Auto-updating Ollama without checking Agent Zero compatibility first
+- ❌ Assuming old downgrade advice still applies (mostly outdated)
+- ❌ Mixing very old Agent Zero with very new Ollama
 
 **Prevention:**
-- Pin Ollama version for production use
-- Test updates in isolated environment first
-- Monitor Agent Zero releases and changelogs
-- Check compatibility matrix before updating either tool
+- Update both components together
+- Test after updates
+- Check release notes before major version jumps
 
 **Sources:** [GitHub #819](https://github.com/agent0ai/agent-zero/issues/819)
 
-**Status:** ⚠️ Version-Dependent | **Priority:** Medium
+**Status:** ✅ Mostly Resolved (update both components) | **Priority:** Low (was Medium)
 
-**Note:** Many users successfully run recent Ollama versions with Agent Zero v0.9.7+. The 405 error is often resolved by updating Agent Zero rather than downgrading Ollama.
+**Note:** Early 2025 reports of 405 errors are largely historical. Current versions work together reliably.
 
 ---
 
@@ -2372,17 +2392,17 @@ When reporting issues on GitHub:
 
 ## 📊 Error Priority Matrix
 
-| Error | Impact | Frequency | Difficulty | Status |
-|-------|--------|-----------|------------|--------|
-| Local LLM Connection | Critical | Very High | Easy | Workaround |
-| Socket Closed | Critical | High | Medium | Unresolved |
-| Data Loss | Critical | Medium | Easy | Unresolved |
-| FAISS Memory Errors | Critical | Medium | Medium | Unresolved |
-| File Descriptor Leak | High | Medium | Easy | Workaround |
-| Embedding Mismatch | High | Low | Easy | Workaround |
-| Terminal No Output | High | Medium | Medium | Workaround |
-| MCP Connection | Medium | Low | Hard | Unresolved |
-| Ollama Version | Medium | High | Easy | Known Issue |
+| Error | Impact | Frequency | Difficulty | Status | Jan 2026 Notes |
+|-------|--------|-----------|------------|--------|----------------|
+| Socket Closed | Critical | Very High | Medium | Unresolved | #1 complaint 2025-2026 |
+| FAISS Memory Errors | Critical | High | Medium | Unresolved | Frequent when switching models |
+| Memory TypeError | High | Medium | Easy | Fixed (update) | Recent parser improvements |
+| Data Loss | High | Low | Easy | Preventable | Mostly config issue now |
+| Local LLM Connection | Medium | Low | Easy | Mostly Solved | Official docs improved |
+| File Descriptor Leak | High | Medium | Easy | Workaround | Set ulimit at start |
+| Terminal No Output | Medium | Low | Medium | Workaround | Less frequent lately |
+| MCP Connection | Medium | Low | Hard | Unresolved | Expected to improve |
+| Ollama 405 | Low | Very Low | Easy | Resolved | Update both components |
 
 ---
 
@@ -2454,24 +2474,187 @@ A: Only if you set up persistent volumes and backups! Docker containers are ephe
 
 These errors have verified GitHub issue numbers and are acknowledged by maintainers:
 
-| Error | GitHub Issue | Status | Severity |
-|-------|-------------|--------|----------|
-| Socket Closed (OSError) | [#648](https://github.com/agent0ai/agent-zero/issues/648), [#680](https://github.com/agent0ai/agent-zero/issues/680) | Open | Critical |
-| FAISS Memory Errors | [#615](https://github.com/agent0ai/agent-zero/issues/615), [#759](https://github.com/agent0ai/agent-zero/issues/759) | Open | Critical |
-| File Descriptor Leak | [#906](https://github.com/agent0ai/agent-zero/issues/906), [#681](https://github.com/agent0ai/agent-zero/issues/681) | Open | High |
-| Terminal Access Loss | [#106](https://github.com/agent0ai/agent-zero/issues/106) | Open | High |
-| MCP Session Issues | [#859](https://github.com/agent0ai/agent-zero/issues/859) | Open | Medium |
-| Ollama 405 Errors | [#819](https://github.com/agent0ai/agent-zero/issues/819) | Version-dependent | Medium |
+| Error | GitHub Issue | Status (Jan 2026) | Severity | Notes |
+|-------|-------------|-------------------|----------|-------|
+| Socket Closed (OSError) | [#648](https://github.com/agent0ai/agent-zero/issues/648), [#680](https://github.com/agent0ai/agent-zero/issues/680) | Open - Active | Critical | Top complaint 2025-2026 |
+| FAISS Memory Errors | [#615](https://github.com/agent0ai/agent-zero/issues/615), [#759](https://github.com/agent0ai/agent-zero/issues/759) | Open | Critical | When switching models |
+| File Descriptor Leak | [#906](https://github.com/agent0ai/agent-zero/issues/906), [#681](https://github.com/agent0ai/agent-zero/issues/681) | Open | High | Browser tool bug |
+| Terminal Access Loss | [#106](https://github.com/agent0ai/agent-zero/issues/106) | Open | High | Separate from output buffering |
+| MCP Session Issues | [#859](https://github.com/agent0ai/agent-zero/issues/859) | Open | Medium | Improving with MCP maturity |
+| Ollama 405 Errors | [#819](https://github.com/agent0ai/agent-zero/issues/819) | Mostly Resolved | Low | Update both components |
 
 ### ⚠️ Community-Reported (Needs Verification)
 
 These are based on community reports but lack official issue tracking:
 
-- Data loss on crash (multiple anecdotal reports)
-- Embedding model special character issues (Linux edge case)
-- Docker volume mapping conflicts (setup misconfiguration)
+- **Memory recall TypeError** - Addressed in recent parser updates (Jan 2026)
+- **Data loss on crash** - Multiple anecdotal reports, mostly configuration issue with volumes
+- **Embedding model special characters** - Linux edge case, inconsistently reproduced
+- **Docker volume mapping conflicts** - Setup misconfiguration, well-documented now
 
-**When in doubt:** Check [Agent Zero Issues](https://github.com/agent0ai/agent-zero/issues) before assuming behavior.
+### 📈 What Improved Since v0.9.7
+
+Based on community reports and issue tracking (Nov 2024 - Jan 2026):
+
+**Resolved/Improved:**
+- ✅ Local LLM connection setup (official docs now clear)
+- ✅ Ollama 405 errors (update both components)
+- ✅ Memory recall TypeError (parser resilience)
+- ✅ Data persistence awareness (volume mapping emphasized)
+
+**Still Problematic:**
+- ❌ Socket closed during long operations (#648 - most reported)
+- ❌ FAISS corruption when rapidly switching models
+- ❌ Browser tool file descriptor leaks (#906)
+- ❌ Occasional terminal hangs on specific operations
+
+**Maintenance Note:** Check [Agent Zero Issues](https://github.com/agent0ai/agent-zero/issues) with keywords: "OSError", "socket", "FAISS", "KeyError", "crash", "hang" for current status. This guide should be refreshed every 2-3 months.
+
+---
+
+## 📚 Appendix: Diagnostic Tools
+
+### Full Validation Script
+
+**Complete automated health check (save as `validate-agent-zero.sh`):**
+
+```bash
+#!/bin/bash
+
+echo "🔍 Agent Zero Setup Validator"
+echo "=============================="
+echo ""
+
+ERRORS=0
+WARNINGS=0
+
+# Color codes
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Function to check status
+check() {
+    if [ $? -eq 0 ]; then
+        echo -e "${GREEN}✓${NC} $1"
+    else
+        echo -e "${RED}✗${NC} $1"
+        ((ERRORS++))
+    fi
+}
+
+warn() {
+    echo -e "${YELLOW}⚠${NC} $1"
+    ((WARNINGS++))
+}
+
+# Docker checks
+echo "📦 Checking Docker..."
+docker --version > /dev/null 2>&1
+check "Docker installed"
+
+docker ps > /dev/null 2>&1
+check "Docker running"
+
+CPUS=$(docker info 2>/dev/null | grep "CPUs" | awk '{print $2}')
+if [ "$CPUS" -ge 4 ]; then
+    echo -e "${GREEN}✓${NC} Docker CPUs: $CPUS"
+else
+    warn "Docker CPUs: $CPUS (recommend 4+)"
+fi
+
+MEM=$(docker info 2>/dev/null | grep "Total Memory" | awk '{print $3}')
+echo -e "${GREEN}✓${NC} Docker Memory: $MEM"
+
+# Port check
+echo ""
+echo "🔌 Checking Port 50080..."
+curl -s localhost:50080 > /dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo -e "${GREEN}✓${NC} Port 50080 available"
+else
+    echo -e "${RED}✗${NC} Port 50080 already in use"
+    ((ERRORS++))
+fi
+
+# Ollama checks
+echo ""
+echo "🤖 Checking Ollama..."
+ollama --version > /dev/null 2>&1
+check "Ollama installed"
+
+ollama list > /dev/null 2>&1
+check "Ollama running"
+
+curl -s http://localhost:11434/api/tags > /dev/null 2>&1
+check "Ollama API responding"
+
+if ollama list 2>/dev/null | grep -q "llama3.2"; then
+    echo -e "${GREEN}✓${NC} Model: llama3.2 installed"
+else
+    warn "Model: llama3.2 not found (run: ollama pull llama3.2:1b)"
+fi
+
+if ollama list 2>/dev/null | grep -q "mxbai-embed-large"; then
+    echo -e "${GREEN}✓${NC} Model: mxbai-embed-large installed"
+else
+    warn "Model: mxbai-embed-large not found (run: ollama pull mxbai-embed-large)"
+fi
+
+# Disk space
+echo ""
+echo "💾 Checking Disk Space..."
+SPACE=$(df -h / | tail -1 | awk '{print $4}' | sed 's/G//')
+if [ "${SPACE%.*}" -ge 20 ]; then
+    echo -e "${GREEN}✓${NC} Free space: ${SPACE}G"
+else
+    warn "Free space: ${SPACE}G (recommend 20G+)"
+fi
+
+# Memory
+echo ""
+echo "🧠 Checking Memory..."
+if command -v free > /dev/null 2>&1; then
+    FREE_MEM=$(free -h | grep Mem | awk '{print $7}')
+    echo -e "${GREEN}✓${NC} Free RAM: $FREE_MEM"
+fi
+
+# Ulimit
+echo ""
+echo "📂 Checking File Descriptor Limit..."
+ULIMIT=$(ulimit -n)
+if [ "$ULIMIT" -ge 4096 ]; then
+    echo -e "${GREEN}✓${NC} File descriptor limit: $ULIMIT"
+elif [ "$ULIMIT" -ge 1024 ]; then
+    warn "File descriptor limit: $ULIMIT (recommend 65536)"
+else
+    echo -e "${RED}✗${NC} File descriptor limit: $ULIMIT (too low!)"
+    ((ERRORS++))
+fi
+
+# Summary
+echo ""
+echo "=============================="
+if [ $ERRORS -eq 0 ] && [ $WARNINGS -eq 0 ]; then
+    echo -e "${GREEN}✓ READY TO START${NC}"
+    echo "All checks passed! You can start Agent Zero."
+elif [ $ERRORS -eq 0 ]; then
+    echo -e "${YELLOW}⚠ READY WITH WARNINGS${NC}"
+    echo "$WARNINGS warning(s) found. Agent Zero will work but may have issues under heavy load."
+else
+    echo -e "${RED}✗ NOT READY${NC}"
+    echo "$ERRORS error(s) and $WARNINGS warning(s) found."
+    echo "Fix the errors above before starting Agent Zero."
+    exit 1
+fi
+```
+
+**Usage:**
+```bash
+chmod +x validate-agent-zero.sh
+./validate-agent-zero.sh
+```
 
 ---
 
