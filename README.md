@@ -1,29 +1,63 @@
 # Agent Zero: Beginner's Guide to Common Errors
 
-**Last Updated:** January 21, 2026  
-**Agent Zero Version:** v0.9.7 (November 2024)  
-**Last Verified Against GitHub Issues:** January 21, 2026  
+**Last Updated:** February 11, 2026  
+**Agent Zero Version:** v0.9.8 (February 10, 2025)  
+**Last Verified Against GitHub Issues:** February 11, 2026  
 **Target Audience:** Non-expert beginners using self-hosted Agent Zero on Windows/Linux/macOS
+
+---
+
+## 🚨 CRITICAL: v0.9.8 Breaking Changes
+
+**If upgrading from v0.9.7 or earlier, READ THIS FIRST:**
+
+### What Changed
+1. **Skills replaced Instruments** - Old "Instruments" no longer exist
+2. **Volume mapping MUST use `/a0/usr`** - Mapping `/a0` will cause issues
+3. **WebSocket-based UI** - Real-time updates, not polling
+4. **User data moved to `/usr` structure** - Cleaner separation
+5. **Resource requirements increased** - 8GB RAM minimum (was 6GB)
+
+### Migration Required
+```bash
+# 1. Backup FIRST via Settings → Backup & Restore
+# 2. Stop old container
+docker stop agent-zero && docker rm agent-zero
+
+# 3. Start v0.9.8 with NEW volume mapping
+docker run -d -p 50080:80 \
+  -v ~/agent-zero-data:/a0/usr \
+  --ulimit nofile=65536:65536 \
+  --name agent-zero agent0ai/agent-zero:latest
+
+# 4. On first start, automatic migration runs
+# 5. Verify your data in Settings
+```
+
+### If Migration Fails
+- Restore from backup (Settings → Backup & Restore)
+- Check logs: `docker logs agent-zero | tail -100`
+- Report with your OS and error message
 
 ---
 
 ## 🚀 Fix 90% of Issues in 5 Minutes
 
-**Before reading the full guide, try these fixes first:**
+**Try these before reading the full guide:**
 
-### 1. Correct Docker Setup
+### 1. Correct Docker Setup (v0.9.8)
 ```bash
 # Stop and recreate with proper configuration
 docker stop agent-zero && docker rm agent-zero
 
-# Linux/macOS
+# Linux/macOS - NOTE: /a0/usr (not /a0)
 docker run -d -p 50080:80 \
   -v ~/agent-zero-data:/a0/usr \
   --add-host=host.docker.internal:host-gateway \
   --ulimit nofile=65536:65536 \
   --name agent-zero agent0ai/agent-zero
 
-# Windows (PowerShell)
+# Windows (PowerShell) - NOTE: /a0/usr
 docker run -d -p 50080:80 -v C:\agent-zero-data:/a0/usr --ulimit nofile=65536:65536 --name agent-zero agent0ai/agent-zero
 ```
 
@@ -43,1272 +77,58 @@ docker restart agent-zero
 docker restart agent-zero
 ```
 
-### 5. Emergency Reset
-```bash
-docker stop agent-zero && docker rm agent-zero
-docker pull agent0ai/agent-zero:latest
-# Then run step 1 again
-```
-
-**Still broken?** Read the detailed sections below.
+### 5. Use Built-in Backup (v0.9.8)
+- Settings → Backup & Restore → Create Backup
+- Do this BEFORE troubleshooting
+- Store backup file outside Docker
 
 ---
 
-## 📦 Known Safe Defaults
-
-**Copy these exact settings to avoid issues:**
+## 📦 Known Safe Defaults (Updated for v0.9.8)
 
 | Component | Recommended Value | Why |
 |-----------|------------------|-----|
-| Ollama version | Latest (0.5+) | Works with Agent Zero v0.9.7+ |
-| Chat model | `llama3.2:1b` or `llama3.2:3b` | Balance of speed/quality |
+| Agent Zero version | v0.9.8 | Latest stable |
+| Docker RAM | **8GB minimum** | WebSocket + Skills overhead |
+| Ollama version | Latest (0.5+) | Works with v0.9.8 |
+| Chat model | `llama3.2:3b` or `qwen2.5:3b` | Best balance |
 | Embedding | `mxbai-embed-large` | Standard, reliable |
-| Docker RAM | 8GB minimum | Prevents OOM crashes |
-| File descriptors | `--ulimit nofile=65536:65536` | Prevents browser crashes |
-| Volume mapping | `-v ~/agent-zero-data:/a0/usr` | Only map /usr, not /a0 |
-| Backup frequency | Before each session | Prevents data loss |
-
-**Don't experiment with these until Agent Zero works reliably.**
-
----
-
-## 🔄 When to Restart vs Rebuild
-
-**Quick decision guide:**
-
-| Symptom | Action | Command |
-|---------|--------|---------|
-| Agent frozen/unresponsive | Restart container | `docker restart agent-zero` |
-| Socket closed error | Restart container | `docker restart agent-zero` |
-| No terminal output | Restart container | `docker restart agent-zero` |
-| FAISS/Memory errors | Clear memory + restart | `docker exec agent-zero rm -rf /a0/memory/* && docker restart agent-zero` |
-| Changed embedding model | Clear memory + restart | Same as above |
-| Connection errors | Check config, then restart | Fix API URL → restart |
-| File descriptor errors | Recreate with ulimit | Stop → rm → run with `--ulimit` |
-| Persistent breakage | Rebuild container | Pull latest → recreate |
-| Lost data | Restore from backup | Use UI Backup & Restore |
-
----
-
-## ⚠️ Version Scope Notice
-
-This guide reflects observed behavior in **Agent Zero v0.9.7** as of January 2026. Implementation details (model names, vector memory backend, terminal handling) may change in future releases. 
-
-**⚠️ If using Agent Zero ≥v0.10.x:** Verify against release notes. Terminal subsystem, MCP integration, and memory backend may have different behavior.
-
-When behavior differs from this guide, prefer:
-
-1. Built-in UI tools and features
-2. Official [release notes](https://github.com/agent0ai/agent-zero/releases)
-3. [Official documentation](https://github.com/agent0ai/agent-zero/tree/main/docs)
-
-**Model names** (llama3.2, mxbai-embed-large) are examples and may change. Always verify with `ollama list` and copy exact names.
-
-**Status as of Jan 2026:** Most connection issues (#1) now resolved for users following official quick-start. Socket closed (#648) and FAISS errors remain top complaints.
-
-**FAISS Memory Note:** Vector memory is powerful but fragile. Many experienced users periodically clear `/a0/memory/` (weekly or when switching workflows) to prevent index corruption and improve stability. This is a known trade-off.
-
----
-
-## 🎯 Quick Start: Understanding This Guide
-
-This guide compiles the **most persistent, unresolved errors** reported by 5+ users across multiple sources (GitHub, forums, Discord) over the past 3 months. Each error includes:
-
-- **Clear description** in plain language
-- **Why it happens** (root causes)
-- **How to fix it** (step-by-step)
-- **What NOT to do** (common mistakes)
-- **How to prevent it** (best practices)
-
-**Important:** Agent Zero is under active development. Some issues may be resolved in future versions.
+| File descriptors | `--ulimit nofile=65536:65536` | Prevents crashes |
+| Volume mapping | `-v ~/data:/a0/usr` | **MUST be /usr** |
+| Backup method | Settings → Backup & Restore | Built-in feature (v0.9+) |
 
 ---
 
 ## 🔍 Quick Symptom Finder
 
-**See an error message? Find your solution fast:**
-
 | What You See | Jump To Section |
 |-------------|-----------------|
-| `Cannot connect to host` / `Connection timeout` / `litellm.APIConnectionError` | [#1 Local LLM Connection](#1-local-llm-connection-failures) |
-| `OSError: Socket is closed` / Agent unresponsive | [#2 Socket Closed Error](#2-socket-closed-error) |
-| Chat history disappeared / Files missing / Corrupted backup | [#3 Data Loss](#3-data-loss-on-crashrestart) |
-| `KeyError` / `AssertionError: d == self.d` / `InvalidKeyException` | [#4 Memory FAISS Errors](#4-memory-system-faiss-errors) |
-| `OSError: [Errno 24] Too many open files` | [#5 File Descriptor Exhaustion](#5-file-descriptor-exhaustion) |
-| `Dimension mismatch` / Vector search fails | [#6 Embedding Model Mismatch](#6-embedding-model-mismatch) |
-| Commands run but no output / "No output returned" | [#7 Terminal Output Empty](#7-terminal-output-empty) |
-| MCP tools load but don't work | [#8 MCP Connection Failures](#8-mcp-server-connection-failures) |
-| `405 Method Not Allowed` / `OllamaException: 405` | [#9 Ollama Incompatibility](#9-ollama-version-incompatibility) |
-| Container won't start / Docker issues | [Platform Setup Guides](#-platform-specific-setup-guides) |
+| `Cannot connect to host` / Connection timeout | [#1 Local LLM Connection](#1-local-llm-connection-failures) |
+| `OSError: Socket is closed` / WebSocket disconnected | [#2 Socket & WebSocket Errors](#2-socket--websocket-errors) |
+| Chat history missing / Corrupted backup | [#3 Data Loss](#3-data-loss-on-crashrestart) |
+| `KeyError` / `AssertionError: d == self.d` | [#4 Memory FAISS Errors](#4-memory-system-faiss-errors) |
+| Skills won't import / `SKILL.md` errors | [#5 Skills System Errors](#5-skills-system-errors-new-in-v098) |
+| Git clone failed / Authentication error | [#6 Git Project Errors](#6-git-project-errors-new-in-v098) |
+| Settings not saving / Config conflicts | [#7 Configuration Conflicts](#7-configuration-conflicts-new) |
+| `OSError: [Errno 24] Too many open files` | [#8 File Descriptor Exhaustion](#8-file-descriptor-exhaustion) |
+| Container won't start / Initialization loop | [#9 Startup Failures](#9-startup-failures--initialization-loops) |
+| Commands run but no output | [#10 Terminal Output Empty](#10-terminal-output-empty) |
+| Can't access remotely / Tunnel errors | [#11 Dev Tunnels Issues](#11-dev-tunnels--remote-access-new) |
 
 ---
 
-## 📊 Visual Troubleshooting Flowchart
-
-```mermaid
-flowchart TD
-    Start([Error Occurred]) --> Type{What type of error?}
-    
-    Type -->|Connection/Setup| Connect{Can you access UI?}
-    Type -->|Data/Memory| Data{What happened?}
-    Type -->|Performance| Perf{System slow/crash?}
-    
-    Connect -->|No| UI[Check Docker running<br/>Check port 50080<br/>See Platform Setup]
-    Connect -->|Yes, but can't connect to LLM| LLM[Error #1:<br/>Local LLM Connection]
-    
-    Data -->|Lost files/chats| Loss[Error #3:<br/>Data Loss]
-    Data -->|Memory/search errors| Mem{Error message?}
-    Mem -->|KeyError/AssertionError| FAISS[Error #4:<br/>FAISS Memory]
-    Mem -->|Dimension mismatch| Embed[Error #6:<br/>Embedding Mismatch]
-    
-    Perf -->|Too many open files| FD[Error #5:<br/>File Descriptors]
-    Perf -->|Socket closed| Socket[Error #2:<br/>Socket Error]
-    Perf -->|No terminal output| Term[Error #7:<br/>Terminal Output]
-    
-    UI --> Platform
-    LLM --> Platform
-    Loss --> Backup[Go to Backup section]
-    FAISS --> ClearMem[Clear memory directory]
-    Embed --> ClearMem
-    FD --> Restart[Restart with ulimit]
-    Socket --> Reset[Reset terminal]
-    Term --> Reset
-    
-    Platform[Check Platform-Specific<br/>Setup Guide below]
-    
-    style Start fill:#e1f5ff
-    style Type fill:#fff3cd
-    style Platform fill:#d4edda
-    style Backup fill:#f8d7da
-    style ClearMem fill:#fff3cd
-    style Restart fill:#d4edda
-    style Reset fill:#d4edda
-```
-
-**How to use this flowchart:**
-1. Start at the top - identify error type
-2. Follow the arrows based on symptoms
-3. Jump to the referenced section for detailed fixes
-
----
-
-## 🖥️ Platform-Specific Setup Guides
-
-### 💻 Low-Spec / Minimal System Setup
-
-**Can you run Agent Zero on limited hardware? Yes!**
-
-**Absolute Minimum Requirements:**
-- CPU: 2 cores
-- RAM: 4GB (6GB strongly recommended)
-- Disk: 20GB free space
-- OS: Any (Linux uses least resources)
-
-**Optimized Setup for Low-Spec Systems:**
-
-#### Model Selection (Critical for Performance)
-
-**For 4-6GB RAM systems:**
-```bash
-# Ultra-light models
-ollama pull qwen2.5:0.5b    # 0.5 billion parameters (~395MB)
-ollama pull tinyllama       # 1.1B params (~637MB)
-
-# Light embedding (required)
-ollama pull nomic-embed-text  # ~274MB (smaller than mxbai)
-```
-
-**For 6-8GB RAM systems:**
-```bash
-# Small but capable
-ollama pull llama3.2:1b     # 1B params (~1.3GB)
-ollama pull phi3:mini       # 3.8B params (~2.3GB)
-
-# Standard embedding
-ollama pull mxbai-embed-large  # ~670MB
-```
-
-**Performance Expectations:**
-- 0.5B models: 5-15 tokens/sec, suitable for simple tasks
-- 1B models: 3-8 tokens/sec, good for most operations
-- 3B models: 1-4 tokens/sec, best quality on minimal hardware
-
-#### Docker Resource Limits (Prevent Crashes)
-
-```bash
-# For 4GB total RAM system
-docker run -d -p 50080:80 \
-  -v ~/agent-zero-data:/a0/usr \
-  --memory="2g" \
-  --memory-swap="3g" \
-  --cpus="1.5" \
-  --add-host=host.docker.internal:host-gateway \
-  --name agent-zero \
-  agent0ai/agent-zero
-
-# For 6GB total RAM system
-docker run -d -p 50080:80 \
-  -v ~/agent-zero-data:/a0/usr \
-  --memory="3g" \
-  --memory-swap="4g" \
-  --cpus="2" \
-  --add-host=host.docker.internal:host-gateway \
-  --name agent-zero \
-  agent0ai/agent-zero
-```
-
-#### Low-Spec Optimizations
-
-**1. Disable unnecessary features:**
-```bash
-# Set these in Agent Zero Settings
-- Disable web browsing (heavy on RAM)
-- Limit context window to 2048 tokens
-- Disable memory consolidation
-- Use manual backups instead of auto-save
-```
-
-**2. System-level optimizations (Linux):**
-```bash
-# Increase swap (if on HDD, be patient)
-sudo fallocate -l 4G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-
-# Reduce Docker overhead
-# Use alpine-based images when possible
-```
-
-**3. Monitor resources:**
-```bash
-# Watch memory usage
-watch -n 1 'free -h'
-
-# Watch Docker stats
-docker stats agent-zero
-
-# If memory >90%, restart container
-docker restart agent-zero
-```
-
-#### Micro System Configuration (2-core, 4GB RAM)
-
-**Ultra-minimal setup for experimentation:**
-
-```bash
-# 1. Pull smallest viable model
-ollama pull qwen2.5:0.5b
-ollama pull nomic-embed-text
-
-# 2. Start with strict limits
-docker run -d -p 50080:80 \
-  -v ~/agent-zero-data:/a0/usr \
-  --memory="1.5g" \
-  --memory-swap="2g" \
-  --cpus="1" \
-  --add-host=host.docker.internal:host-gateway \
-  --name agent-zero \
-  agent0ai/agent-zero
-
-# 3. Configure in UI
-Chat Model: qwen2.5:0.5b
-Utility Model: qwen2.5:0.5b
-Embedding: nomic-embed-text
-Context: 1024 tokens
-```
-
-**What works on micro systems:**
-- ✅ Basic coding assistance
-- ✅ File operations
-- ✅ Simple automation
-- ✅ Learning Agent Zero
-- ❌ Web browsing (too heavy)
-- ❌ Large file processing
-- ❌ Complex multi-step reasoning
-
-#### Model Quantization Guide
-
-**Understanding quant levels (trade quality for speed/RAM):**
-
-| Quant | Size vs FP16 | Quality | RAM (1B model) | Speed |
-|-------|--------------|---------|----------------|-------|
-| Q2_K  | 25% | Poor | ~500MB | Very Fast |
-| Q4_K_M | 50% | Good | ~700MB | Fast |
-| Q5_K_M | 62% | Better | ~900MB | Medium |
-| Q8_0  | 80% | Best | ~1.2GB | Slower |
-
-**Ollama uses Q4_K_M by default** - good balance for most systems.
-
-**Important:** Larger model at lower quant often beats smaller model at higher quant (if you have VRAM).
-- Example: 70B Q4 > 8B Q8 (when you have 40GB+ VRAM)
-- Prioritize parameter count, then optimize quantization
-
-**To use specific quant:**
-```bash
-# Not all models have all quants available
-ollama pull llama3.2:1b-q4_K_M  # Usually default
-ollama pull llama3.2:1b-q2_K    # Smallest (if available)
-```
-
-#### Troubleshooting Low-Spec Systems
-
-**Symptom:** Container keeps crashing
-```bash
-# Check logs
-docker logs agent-zero | tail -50
-
-# If OOM (Out of Memory):
-# 1. Reduce --memory limit
-# 2. Use smaller model
-# 3. Increase swap space
-```
-
-**Symptom:** Responses extremely slow
-```bash
-# Verify model is running
-ollama ps
-
-# Check if CPU or RAM bottleneck
-htop  # or top on minimal systems
-
-# If CPU maxed: Use smaller model
-# If RAM swapping: Close other apps or increase RAM
-```
-
-**Symptom:** Model loads but times out
-```bash
-# Increase Agent Zero timeout
-# In chat, tell agent:
-"Increase your response timeout to 120 seconds"
-
-# Or use faster model
-```
-
-#### Best Practices for Limited Hardware
-
-1. **Start minimal, scale up:** Begin with smallest model, upgrade if needed
-2. **One task at a time:** Don't multitask Agent Zero on low-spec
-3. **Close everything else:** Browser, IDE, etc during heavy operations
-4. **Use Linux if possible:** Lower overhead than Windows
-5. **Schedule restarts:** `docker restart agent-zero` every few hours
-6. **Batch operations:** Do similar tasks together, then restart
-
-#### Recommended Combos by RAM
-
-**4GB RAM:**
-- Model: qwen2.5:0.5b or tinyllama
-- Embedding: nomic-embed-text
-- Docker RAM: 1.5-2GB
-- Swap: 2-4GB
-
-**6GB RAM:**
-- Model: llama3.2:1b or phi3:mini
-- Embedding: nomic-embed-text or mxbai-embed-large
-- Docker RAM: 3GB
-- Swap: 2GB
-
-**8GB RAM:**
-- Model: llama3.2:3b or qwen2.5:3b
-- Embedding: mxbai-embed-large
-- Docker RAM: 4-5GB
-- Swap: 2GB
-
-**Note:** These are for *dedicated* Agent Zero use. Adjust if running other services.
-
----
-
-### Windows Quick Start (10-15 minutes)
-
-**Prerequisites:**
-- Windows 10/11 (64-bit)
-- At least 8GB RAM (16GB recommended)
-- 20GB free disk space
-
-**Step-by-step:**
-
-1. **Install Docker Desktop:**
-   - Download from https://www.docker.com/products/docker-desktop
-   - Run installer, restart when prompted
-   - Open Docker Desktop → Settings → Resources:
-     - CPU: 4 cores minimum
-     - Memory: 8GB minimum (10GB+ recommended)
-     - Swap: 2GB
-   - Click "Apply & Restart"
-
-2. **Install Ollama (recommended for beginners):**
-   - Download from https://ollama.com/download/windows
-   - Run installer (takes 2-3 minutes)
-   - Open PowerShell and verify:
-     ```powershell
-     ollama --version
-     # Should show version number
-     ```
-   - Download a model:
-     ```powershell
-     ollama pull llama3.2:1b
-     # Wait for download (~1GB)
-     ```
-
-3. **Start Agent Zero:**
-   - Open PowerShell as Administrator
-   - Create data directory:
-     ```powershell
-     mkdir C:\agent-zero-data
-     ```
-   - Run container:
-     ```powershell
-     docker run -d -p 50080:80 -v C:\agent-zero-data:/a0/usr --name agent-zero agent0ai/agent-zero
-     ```
-   - Wait 30 seconds, then open: http://localhost:50080
-
-4. **Configure Ollama:**
-   - In Agent Zero UI → Settings → Agent Settings
-   - **Chat Model:**
-     - Provider: `Ollama`
-     - Model: `llama3.2:1b`
-     - API Base URL: `http://host.docker.internal:11434`
-   - **Utility Model:** Same as Chat Model
-   - **Embedding Model:**
-     - First run in PowerShell: `ollama pull mxbai-embed-large`
-     - Provider: `Ollama`
-     - Model: `mxbai-embed-large`
-     - API Base URL: `http://host.docker.internal:11434`
-   - Click "Save Settings"
-
-**Windows-Specific Troubleshooting:**
-- If Docker Desktop won't start: Enable WSL2 in Windows Features
-- If port 50080 is busy: Use `-p 50081:80` instead
-- If Ollama won't run: Disable antivirus temporarily during first setup
-- File paths: Use `C:\` format, not `C:/`
-
----
-
-### Linux Quick Start (10-15 minutes)
-
-**Prerequisites:**
-- Ubuntu 20.04+, Debian 11+, or similar
-- 8GB RAM minimum (16GB recommended)
-- 20GB free disk space
-
-**Step-by-step:**
-
-1. **Install Docker:**
-   ```bash
-   # Update package list
-   sudo apt update
-   
-   # Install Docker
-   curl -fsSL https://get.docker.com -o get-docker.sh
-   sudo sh get-docker.sh
-   
-   # Add user to docker group (avoid sudo)
-   sudo usermod -aG docker $USER
-   
-   # Log out and back in, then verify
-   docker --version
-   ```
-
-2. **Install Ollama:**
-   ```bash
-   # Install Ollama
-   curl -fsSL https://ollama.com/install.sh | sh
-   
-   # Verify installation
-   ollama --version
-   
-   # Pull a model
-   ollama pull llama3.2:1b
-   
-   # Pull embedding model
-   ollama pull mxbai-embed-large
-   ```
-
-3. **Start Agent Zero:**
-   ```bash
-   # Create data directory
-   mkdir -p ~/agent-zero-data
-   
-   # Run container with proper networking
-   docker run -d \
-     -p 50080:80 \
-     -v ~/agent-zero-data:/a0/usr \
-     --add-host=host.docker.internal:host-gateway \
-     --ulimit nofile=65536:65536 \
-     --name agent-zero \
-     agent0ai/agent-zero
-   
-   # Verify it's running
-   docker ps
-   
-   # Open browser to http://localhost:50080
-   ```
-
-4. **Configure Ollama:**
-   - Settings → Agent Settings → Configure same as Windows guide above
-   - API Base URL: `http://host.docker.internal:11434`
-
-**Linux-Specific Troubleshooting:**
-- If `--add-host` doesn't work: Your Docker version is old, update it
-- Permission denied: Make sure you logged out/in after adding to docker group
-- Port already in use: Check with `sudo lsof -i :50080`, use different port
-- Firewall blocking: `sudo ufw allow 50080/tcp`
-
----
-
-### macOS Quick Start (10-15 minutes)
-
-**Prerequisites:**
-- macOS 11+ (Big Sur or newer)
-- Intel or Apple Silicon (M1/M2/M3)
-- 8GB RAM minimum (16GB recommended)
-
-**Step-by-step:**
-
-1. **Install Docker Desktop:**
-   - Download from https://www.docker.com/products/docker-desktop
-   - Drag to Applications folder
-   - Open Docker Desktop
-   - Settings → Resources:
-     - Memory: 8GB minimum
-     - CPUs: 4 minimum
-   - Apply & Restart
-
-2. **Install Ollama:**
-   ```bash
-   # Download and install from https://ollama.com/download/mac
-   # Or via Homebrew:
-   brew install ollama
-   
-   # Start Ollama service
-   ollama serve &
-   
-   # Pull models
-   ollama pull llama3.2:1b
-   ollama pull mxbai-embed-large
-   ```
-
-3. **Start Agent Zero:**
-   ```bash
-   # Create data directory
-   mkdir -p ~/agent-zero-data
-   
-   # Run container (host.docker.internal works by default on macOS)
-   docker run -d \
-     -p 50080:80 \
-     -v ~/agent-zero-data:/a0/usr \
-     --ulimit nofile=65536:65536 \
-     --name agent-zero \
-     agent0ai/agent-zero
-   
-   # Open http://localhost:50080
-   ```
-
-4. **Configure:** Same as Windows/Linux guides above
-
-**macOS-Specific Troubleshooting:**
-- Apple Silicon (M1/M2/M3): Ensure "Use Rosetta for x86/amd64 emulation" is enabled in Docker settings
-- If Ollama won't start: Check System Preferences → Privacy & Security
-- Port conflicts: macOS reserves some ports, use 50081 if needed
-
----
-
-### 5-Minute Checklist (All Platforms)
-
-Before starting Agent Zero, verify:
-
-- [ ] Docker Desktop is running (check system tray/menu bar)
-- [ ] Ollama is running: `ollama list` shows models
-- [ ] Port 50080 is free: `curl localhost:50080` should fail with "connection refused"
-- [ ] At least 10GB free disk space
-- [ ] Data directory created and accessible
-
-**Common First-Time Mistakes:**
-- ❌ Forgetting to pull Ollama models before configuring
-- ❌ Using `localhost` instead of `host.docker.internal` in settings
-- ❌ Not waiting 30 seconds for container to fully start
-- ❌ Closing Docker Desktop while Agent Zero is running
-
----
-
-## ⚠️ Critical Setup Rules (Read First!)
-
-Before diving into specific errors, follow these golden rules:
-
-### 1. **Docker Networking Rule**
-- ❌ **NEVER use** `localhost` or `127.0.0.1` to reach host services from inside Docker containers
-- ✅ **ALWAYS use** `host.docker.internal` to connect to services running on your host machine
-- **Example:** For Ollama on your host: `http://host.docker.internal:11434`
-- **Exception:** If using `--network=host` mode, localhost works (but not recommended for beginners)
-
-### 2. **Data Backup Rule**
-- ✅ **ALWAYS** create manual backups before updates or major changes
-- ✅ Use built-in Backup & Restore feature (Settings → Backup & Restore)
-- ✅ Also manually copy important files from `/a0/usr` directory
-- ❌ **NEVER** trust auto-save alone for critical work
-
-### 3. **Volume Mapping Rule**
-- ✅ Map **only** `/a0/usr` directory for your data persistence
-- ❌ **NEVER** map the entire `/a0` directory (causes version conflicts)
-- **Correct:** `-v /your/local/path:/a0/usr`
-- **Wrong:** `-v /your/local/path:/a0`
-
-### 4. **Security Note (v0.9.7+)**
-- Agent Zero v0.9.7+ enforces UI password protection by default
-- If locked out, set environment variable: `-e AGENT_ZERO_PASSWORD=yourpassword`
-- Access Settings to configure authentication preferences
-
----
-
-## 📋 Common Errors Ranked by Severity
-
-### 🔴 Critical (System Breaking)
-
-1. [Socket Closed Error](#2-socket-closed-error) - **Most reported in 2025-2026**
-2. [Memory FAISS Errors](#4-memory-system-faiss-errors) - **Frequent when switching models**
-3. [Data Loss on Crash](#3-data-loss-on-crashrestart) - **Mostly preventable with volumes**
-4. [Local LLM Connection](#1-local-llm-connection-failures) - **Largely solved in official docs**
-
-### 🟡 High (Major Functionality Impact)
-
-5. [File Descriptor Exhaustion](#5-file-descriptor-exhaustion)
-6. [Terminal Output Empty](#7-terminal-output-empty)
-7. [Embedding Model Mismatch](#6-embedding-model-mismatch)
-
-### 🟢 Medium (Recoverable Issues)
-
-8. [MCP Server Connections](#8-mcp-server-connection-failures)
-9. [Ollama Compatibility](#9-ollama-version-incompatibility) - **Mostly resolved with updates**
-
----
-
-## 🔍 Error Log Decoder
-
-**Don't understand error messages? Match them here:**
-
-### Example 1: Local LLM Connection Error
-```
-ERROR: litellm.APIConnectionError: Cannot connect to host 127.0.0.1:11434
-                                                          ^^^^^^^^^^^^^^
-       Connection timeout after 30s
-       Failed to establish connection
-
-DECODED:
-Line 1: Agent tried to reach LLM at 127.0.0.1 (localhost)
-        ↓
-        PROBLEM: You're using localhost inside Docker
-        SOLUTION: Change to host.docker.internal → GO TO ERROR #1
-
-Line 2: Waited 30 seconds, no response
-        ↓
-        CHECK: Is Ollama actually running?
-        TEST: Run "ollama list" in terminal
-```
-
-### Example 2: FAISS Memory Crash
-```
-Traceback (most recent call last):
-  File "/a0/python/helpers/memory.py", line 142, in recall_memories
-    results = self.vectorstore.similarity_search(query, k=5)
-  File "langchain_community/vectorstores/faiss.py", line 387, in search
-    KeyError: 3687
-              ^^^^
-AssertionError: d == self.d (1024 != 768)
-                              ^^^^   ^^^
-
-DECODED:
-Line 1-3: Agent searching memory database
-Line 4: FAISS can't find document ID 3687
-        ↓
-        CAUSE: Index and documents out of sync
-        
-Line 5: Embedding dimensions don't match
-        Old: 768 dimensions (probably text-embedding-ada-002)
-        New: 1024 dimensions (probably mxbai-embed-large)
-        ↓
-        FIX: Clear memory directory → GO TO ERROR #4
-```
-
-### Example 3: Socket Closed During Operation
-```
-[agent-zero] Executing: python analyze_data.py
-[agent-zero] ...output streaming...
-OSError: Socket is closed
-         ^^^^^^^^^^^^^^^^
-[SYSTEM] Returning control to agent after 15 seconds...
-[agent-zero] Response timeout
-
-DECODED:
-Line 1-2: Task started successfully
-Line 3: SSH connection dropped mid-operation
-        ↓
-        CAUSE: Operation took >5 minutes OR
-               Docker networking dropped connection
-               
-Line 4: System tried to recover but failed
-        ↓
-        IMMEDIATE FIX: Type "reset terminal"
-        LONG-TERM: → GO TO ERROR #2
-```
-
-### Example 4: File Descriptor Exhaustion
-```
-[browser_tool] Opening https://example.com...
-OSError: [Errno 24] Too many open files
-         ^^^^^^ ^^  ^^^^^^^^^^^^^^^^^^^^^
-[browser_tool] Failed to launch Chromium
-
-DECODED:
-Errno 24: Linux error code for file descriptor limit
-         ↓
-         CHECK: Run "docker exec agent-zero sh -c 'ls /proc/1/fd | wc -l'"
-         If >800: You're near the 1024 limit
-         
-Too many open files: Browser didn't close previous sessions
-         ↓
-         IMMEDIATE: docker exec agent-zero pkill -9 chrome
-         PERMANENT: Restart with --ulimit → GO TO ERROR #5
-```
-
-### Example 5: Data Corruption on Restore
-```
-Restore error: Unexpected token 'T', "Traceback" is not valid JSON
-                                ^^^   ^^^^^^^^^^^
-Position 0
-File contents: Traceback (most recent call last):
-               File "/a0/backup.py"...
-
-DECODED:
-"Traceback" at start: Backup file contains error log, not data
-         ↓
-         CAUSE: Backup was created during a crash
-         
-"not valid JSON": File should start with { or [
-         ↓
-         ACTION: Open backup.json in text editor
-                 Remove everything before first {
-                 Remove everything after last }
-                 Validate at jsonlint.com
-         → GO TO ERROR #3 for prevention
-```
-
-### Example 6: Ollama Version Mismatch
-```
-requests.exceptions.HTTPError: 405 Client Error: Method Not Allowed
-                               ^^^                ^^^^^^^^^^^^^^^^^^
-POST /api/generate
-     ^^^^^^^^^^^^^^
-
-DECODED:
-405 Method Not Allowed: Ollama rejected the API call
-         ↓
-         CAUSE: Agent Zero using old API format
-                Ollama 0.5+ changed endpoints
-         
-POST /api/generate: The endpoint being called
-         ↓
-         CHECK: ollama --version
-         If 0.5+: → GO TO ERROR #9
-         FIX: Downgrade to Ollama 0.4.x
-```
-
-### Example 7: Terminal No Output
-```
-[code_execution_tool] Running: ls -la /a0/work_dir
-[code_execution_tool] Exit code: 0
-                                  ^
-[code_execution_tool] Output: 
-                      ^^^^^^^
-[agent-zero] No files found
-
-DECODED:
-Exit code: 0 means SUCCESS (not an error!)
-         ↓
-         PROBLEM: Command succeeded but output not captured
-         
-Output: (empty): SSH session buffer not flushed
-         ↓
-         IMMEDIATE: docker restart agent-zero
-         WORKAROUND: Use explicit markers → GO TO ERROR #7
-```
-
-**Quick Pattern Matching:**
-- See `localhost` or `127.0.0.1` → Error #1
-- See `KeyError` with numbers → Error #4
-- See `Socket is closed` → Error #2
-- See `Errno 24` → Error #5
-- See `AssertionError: d == self.d` → Error #4 or #6
-- See `405 Method Not Allowed` → Error #9
-- See `Traceback` in backup file → Error #3
-
----
-
-## 🛡️ Pre-Flight Setup Validator
-
-**Run this BEFORE your first Agent Zero session to catch 80% of setup issues:**
-
-### One-Command Health Check
-
-```bash
-# Copy and paste this entire command:
-curl -fsSL https://raw.githubusercontent.com/agent0ai/agent-zero/main/scripts/validate-setup.sh | bash
-```
-
-**Don't have the script yet? Use this manual validation:**
-
-### Manual Validation Checklist
-
-**Step 1: Docker Health**
-```bash
-# Check Docker is running
-docker --version
-# Should show: Docker version 20.10+ or higher
-
-# Check Docker is responsive
-docker ps
-# Should show running containers or empty table (not error)
-
-# Check Docker resources
-docker info | grep -E "CPUs|Total Memory"
-# CPUs: Should be 4+
-# Memory: Should be 8GB+ (8589934592 bytes = 8GB)
-```
-✅ **Pass:** Version shown, ps works, 4+ CPUs, 8+ GB  
-❌ **Fail:** Error messages, version <20.0, <4 CPUs, <8GB
-
----
-
-**Step 2: Port Availability**
-```bash
-# Check if port 50080 is free
-curl -v localhost:50080 2>&1 | grep -i "refused\|failed"
-# Should show "Connection refused" (port is free)
-
-# If you see different output:
-lsof -i :50080
-# Shows what's using the port - stop that service first
-```
-✅ **Pass:** "Connection refused"  
-❌ **Fail:** Shows webpage or other service
-
----
-
-**Step 3: Ollama Validation**
-```bash
-# Check Ollama is installed and running
-ollama --version
-# Should show: ollama version 0.4.0 or similar
-
-# Check Ollama service is active
-ollama list
-# Should show downloaded models or empty list
-
-# Test Ollama API
-curl http://localhost:11434/api/tags
-# Should return JSON with models
-
-# Verify required models
-ollama list | grep -E "llama3.2|mxbai-embed-large"
-# Should show both models
-```
-✅ **Pass:** Version shown, list works, API returns JSON, both models present  
-❌ **Fail:** Command not found, API timeout, models missing
-
-**Fix if models missing:**
-```bash
-ollama pull llama3.2:1b
-ollama pull mxbai-embed-large
-```
-
----
-
-**Step 4: Disk Space**
-```bash
-# Check available space
-df -h / | tail -1 | awk '{print $4}'
-# Should show 20G+ available
-
-# Check Docker space
-docker system df
-# TYPE: Images, Containers, Volumes should have reasonable SIZE
-```
-✅ **Pass:** 20GB+ free  
-❌ **Fail:** <20GB free
-
-**Fix:**
-```bash
-# Clean Docker cache
-docker system prune -a
-```
-
----
-
-**Step 5: Memory Available**
-```bash
-# Check free RAM
-free -h | grep Mem | awk '{print $7}'
-# Should show 4G+ available
-
-# On macOS:
-vm_stat | grep "Pages free" | awk '{print $3 * 4096 / 1024 / 1024 / 1024 "GB"}'
-```
-✅ **Pass:** 4GB+ free  
-❌ **Fail:** <4GB free (close other applications)
-
----
-
-**Step 6: File Descriptor Limits**
-```bash
-# Check current limit
-ulimit -n
-# Should show 4096+ (ideal: 65536)
-```
-✅ **Pass:** 4096+  
-⚠️ **Warning:** 1024 (will hit limits during heavy use)
-
-**Fix for session:**
-```bash
-ulimit -n 65536
-```
-
-**Fix permanently (Linux):**
-```bash
-# Add to /etc/security/limits.conf:
-* soft nofile 65536
-* hard nofile 65536
-```
-
----
-
-**Step 7: Volume Mapping Test**
-```bash
-# Create test directory
-mkdir -p ~/agent-zero-test-data
-echo "test" > ~/agent-zero-test-data/test.txt
-
-# Start test container
-docker run --rm -v ~/agent-zero-test-data:/a0/usr alpine cat /a0/usr/test.txt
-# Should output: test
-
-# Clean up
-rm -rf ~/agent-zero-test-data
-```
-✅ **Pass:** Outputs "test"  
-❌ **Fail:** Error or no output (volume mapping broken)
-
----
-
-### Automated Validation Script
-
-**Save this as `validate-agent-zero.sh` and run before your first session:**
-
-**Full script available in [Appendix: Diagnostic Tools](#appendix-diagnostic-tools) below.**
-
-**Quick version:**
-```bash
-#!/bin/bash
-# Checks: Docker, Ollama, ports, disk space, RAM, ulimits
-# Run: chmod +x validate-agent-zero.sh && ./validate-agent-zero.sh
-```
-
----
-
-## 🚨 Emergency Fix Cards (Copy-Paste Solutions)
-
-**Panicking? Agent broken? Just copy-paste these. No reading required.**
-
-**Note:** "Success rate" estimates are based on community reports and may vary by configuration.
-
----
-
-### 🔴 Card #1: Can't Connect to Ollama/LM Studio
-
-**You see:** `Connection timeout` / `Cannot connect to host` / `litellm.APIConnectionError`
-
-**Copy-paste this entire block:**
-```bash
-# Stop and remove container
-docker stop agent-zero && docker rm agent-zero
-
-# Restart with correct networking
-docker run -d -p 50080:80 \
-  -v ~/agent-zero-data:/a0/usr \
-  --add-host=host.docker.internal:host-gateway \
-  --ulimit nofile=65536:65536 \
-  --name agent-zero \
-  agent0ai/agent-zero
-
-# Wait 30 seconds, then open http://localhost:50080
-```
-
-**Then in Agent Zero UI → Settings → Agent Settings:**
-- Chat Model API Base URL: `http://host.docker.internal:11434`
-- Utility Model API Base URL: `http://host.docker.internal:11434`
-- Embedding Model API Base URL: `http://host.docker.internal:11434`
-
-**Success rate: 95%**
-
----
-
-### 🔴 Card #2: Socket Closed / Agent Unresponsive
-
-**You see:** `OSError: Socket is closed` / Agent stops responding
-
-**Immediate fix - type this in Agent Zero chat:**
-```
-reset terminal
-```
-
-**If that doesn't work, copy-paste:**
-```bash
-docker restart agent-zero
-```
-
-**Success rate: 90%**
-
----
-
-### 🔴 Card #3: Memory Errors (KeyError, FAISS, Dimension Mismatch)
-
-**You see:** `KeyError: 3687` / `AssertionError: d == self.d` / `InvalidKeyException`
-
-**Nuclear option (deletes learned memories but fixes it):**
-```bash
-docker exec agent-zero rm -rf /a0/memory/*
-docker restart agent-zero
-```
-
-**Success rate: 100%** (Warning: Loses all memories)
-
----
-
-### 🔴 Card #4: Lost Data / Chat History Gone
-
-**You see:** Empty chats after restart / Missing files
-
-**If you have a backup file:**
-1. Settings → Backup & Restore → Select backup file → Restore
-
-**If no backup, setup prevention NOW:**
-```bash
-# Stop container
-docker stop agent-zero && docker rm agent-zero
-
-# Create persistent directory
-mkdir -p ~/agent-zero-data
-
-# Restart with proper volume
-docker run -d -p 50080:80 \
-  -v ~/agent-zero-data:/a0/usr \
-  --name agent-zero \
-  agent0ai/agent-zero
-```
-
-**Future backups (run weekly):**
-```bash
-docker exec agent-zero tar -czf /tmp/backup.tar.gz /a0/usr
-docker cp agent-zero:/tmp/backup.tar.gz ~/backup-$(date +%Y%m%d).tar.gz
-```
-
-**Success rate: N/A** (Prevention only)
-
----
-
-### 🟡 Card #5: Too Many Open Files
-
-**You see:** `OSError: [Errno 24] Too many open files`
-
-**Quick fix:**
-```bash
-# Kill zombie processes
-docker exec agent-zero pkill -9 chrome
-docker exec agent-zero pkill -9 chromium
-
-# Restart container
-docker restart agent-zero
-```
-
-**Permanent fix:**
-```bash
-docker stop agent-zero && docker rm agent-zero
-
-docker run -d -p 50080:80 \
-  -v ~/agent-zero-data:/a0/usr \
-  --ulimit nofile=65536:65536 \
-  --ulimit nproc=8192:8192 \
-  --name agent-zero \
-  agent0ai/agent-zero
-```
-
-**Success rate: 95%**
-
----
-
-### 🟡 Card #6: Ollama 405 Error
-
-**You see:** `405 Method Not Allowed` / `OllamaException: 405`
-
-**Check Ollama version:**
-```bash
-ollama --version
-```
-
-**If version 0.5+, downgrade to 0.4.x:**
-```bash
-# Backup first!
-ollama list > ~/ollama-models-backup.txt
-
-# Uninstall (varies by platform)
-# Then install 0.4.x from releases page
-# Restore models: ollama pull <model-name>
-```
-
-**Or wait for Agent Zero update** (check GitHub for latest version)
-
-**Success rate: 80%**
-
----
-
-### 🟡 Card #7: Terminal Commands Return No Output
-
-**You see:** Commands run but show no output / "No output returned"
-
-**Quick fix:**
-```bash
-docker restart agent-zero
-```
-
-**If that doesn't work, use this workaround:**
-In Agent Zero chat, tell it to add markers:
-```
-When running commands, add && echo "__DONE__" at the end
-```
-
-**Success rate: 85%**
-
----
-
-### 🟢 Card #8: Complete Fresh Start
-
-**Nothing works? Scorched earth approach:**
-
-```bash
-# 1. BACKUP FIRST (if possible)
-docker cp agent-zero:/a0/usr ~/emergency-backup-$(date +%Y%m%d)
-
-# 2. Complete removal
-docker stop agent-zero
-docker rm agent-zero
-docker rmi agent0ai/agent-zero
-docker volume prune -f
-docker system prune -a -f
-
-# 3. Fresh install
-mkdir -p ~/agent-zero-data
-
-docker run -d -p 50080:80 \
-  -v ~/agent-zero-data:/a0/usr \
-  --add-host=host.docker.internal:host-gateway \
-  --ulimit nofile=65536:65536 \
-  --name agent-zero \
-  agent0ai/agent-zero:latest
-
-# 4. Wait 60 seconds
-# 5. Open http://localhost:50080
-# 6. Configure Ollama: http://host.docker.internal:11434
-```
-
-**Success rate: 99%** (If this doesn't work, it's a system issue, not Agent Zero)
-
----
-
-### 🟢 Card #9: Docker Won't Start Container
-
-**You see:** Container exits immediately / Won't stay running
-
-**Check what's wrong:**
-```bash
-# View error logs
-docker logs agent-zero
-
-# Common issues:
-```
-
-**If port conflict:**
-```bash
-# Use different port
-docker run -d -p 50081:80 \
-  -v ~/agent-zero-data:/a0/usr \
-  --name agent-zero \
-  agent0ai/agent-zero
-
-# Access at http://localhost:50081
-```
-
-**If permission errors (Linux):**
-```bash
-# Fix ownership
-sudo chown -R $USER:$USER ~/agent-zero-data
-```
-
-**Success rate: 90%**
-
----
-
-### 🟢 Card #10: Can't Access UI (localhost:50080 won't load)
-
-**Checklist:**
-```bash
-# 1. Is container running?
-docker ps | grep agent-zero
-# Should show agent-zero running
-
-# 2. Check container health
-docker logs agent-zero | tail -20
-# Should show "Server started" or similar
-
-# 3. Try different browser/incognito mode
-
-# 4. Check firewall (Linux)
-sudo ufw allow 50080/tcp
-
-# 5. Try 127.0.0.1 instead
-# http://127.0.0.1:50080
-
-# 6. Check what's on that port
-curl -v localhost:50080
-```
-
-**If container not running:**
-```bash
-docker start agent-zero
-```
-
-**Success rate: 95%**
-
----
-
-## 📋 Quick Decision Tree
-
-```
-Problem? → Match symptom below → Jump to card
-
-"Cannot connect" / "timeout" → Card #1
-"Socket closed" / Frozen → Card #2  
-"KeyError" / "FAISS" / Memory error → Card #3
-Lost data / Empty chats → Card #4
-"Too many files" / Errno 24 → Card #5
-"405 Method" → Card #6
-No terminal output → Card #7
-Everything broken → Card #8
-Container won't start → Card #9
-Can't access UI → Card #10
-```
-
-**Still stuck?** Run the validator first:
-```bash
-curl -fsSL https://raw.githubusercontent.com/agent0ai/agent-zero/main/scripts/validate-setup.sh | bash
-```
+## 📊 Error Priority Matrix (v0.9.8)
+
+| Error | Frequency | Severity | Status | v0.9.8 Notes |
+|-------|-----------|----------|--------|--------------|
+| Configuration Conflicts | Very High | High | New Issue | `A0_SET_*` vs UI settings |
+| Skills Import Failures | High | Medium | New in v0.9.8 | Legacy Instrument incompatibility |
+| Socket/WebSocket Drops | High | Critical | Improved | New WebSocket infrastructure |
+| Memory FAISS Errors | Medium | Critical | Improved | Deferred tasks help |
+| Git Project Auth | Medium | High | New in v0.9.8 | SSH key setup |
+| Data Loss | Low | Critical | Preventable | Built-in backup since v0.9 |
+| Connection Issues | Low | High | Mostly Solved | Better docs |
+| Startup Loops | Low | Critical | Ongoing | Attribute errors |
 
 ---
 
@@ -1324,380 +144,534 @@ litellm.APIConnectionError: Cannot connect to host 127.0.0.1:11434
 ```
 
 **Why it happens:**
-1. **Docker network isolation** - `localhost` inside Docker ≠ `localhost` on your computer
-2. Missing `/v1` in API path (LM Studio only)
-3. Wrong model name
-4. **LM Studio:** Local server enabled but no model loaded (common mistake)
-5. Ollama not installed or not running
-6. Firewall blocking connections
+- Docker network isolation (`localhost` inside ≠ `localhost` on host)
+- Missing `/v1` in API path (LM Studio only)
+- LM Studio server enabled but **no model loaded** (very common)
+- Ollama not running
+- Firewall blocking connections
 
-**⚠️ LM Studio Critical:** Enabling the server is not enough—a model must be actively loaded in LM Studio for the server to work.
-
-**Status (Jan 2026):** Largely resolved for most users following official quick-start. Official docs now emphasize `host.docker.internal` prominently. Still affects unusual WSL setups or very old Docker Desktop versions.
+**Status (v0.9.8):** LiteLLM integration stable. 4 new providers added (CometAPI, Z.AI, Moonshot AI, AWS Bedrock).
 
 **Fix step-by-step:**
 
-#### For Ollama (Recommended for Beginners):
-
-1. **Install Ollama on your HOST machine** (not inside Docker):
-   - Windows/Mac: Download from https://ollama.com
-   - Linux: `curl -fsSL https://ollama.com/install.sh | sh`
-
-2. **Download a model:**
-   ```bash
-   ollama pull llama3.2
-   # or for smaller model
-   ollama pull llama3.2:1b
-   ```
-
-3. **Verify Ollama is running:**
+#### For Ollama:
+1. **Verify Ollama running on HOST:**
    ```bash
    ollama list
    # Should show downloaded models
    ```
 
-4. **Configure in Agent Zero UI:**
-   - Open Settings → Agent Settings
-   - **Chat Model:**
-     - Provider: `Ollama`
-     - Model Name: `llama3.2` (exact name from `ollama list`)
-     - API Base URL: `http://host.docker.internal:11434`
-   - **Utility Model:** Same as Chat Model
-   - **Embedding Model:**
-     - Provider: `Ollama`
-     - Model Name: `mxbai-embed-large`
-     - First download: `ollama pull mxbai-embed-large`
-
-5. **Test connection:**
+2. **Pull models if needed:**
    ```bash
-   # From your HOST machine (not Docker):
+   ollama pull llama3.2:3b
+   ollama pull mxbai-embed-large
+   ```
+
+3. **Test API from host:**
+   ```bash
    curl http://localhost:11434/api/tags
    # Should return JSON with model list
    ```
 
+4. **Configure in Agent Zero UI:**
+   - Settings → Agent Settings → Chat Model
+   - Provider: `Ollama`
+   - Model: `llama3.2:3b` (exact name from `ollama list`)
+   - API Base URL: `http://host.docker.internal:11434`
+   
+   - Utility Model: Same settings
+   - Embedding Model:
+     - Provider: `Ollama`
+     - Model: `mxbai-embed-large`
+     - API Base URL: `http://host.docker.internal:11434`
+
 #### For LM Studio:
+1. **Load a model in LM Studio first** (critical step)
+2. **Enable Local Server** (Developer → Local Server)
+3. **Configure in Agent Zero:**
+   - API Base URL: `http://host.docker.internal:1234/v1`
+   - Note the `/v1` at the end!
+   - Model: Copy exact name from LM Studio
 
-1. **Install LM Studio** on your host machine from https://lmstudio.ai
-
-2. **Start Local Server:**
-   - Open LM Studio → Developer → Enable "Local Server"
-   - Load a model first!
-
-3. **Note the port** (usually 1234)
-
-4. **Configure in Agent Zero:**
-   - Provider: `LM Studio`
-   - API Base URL: `http://host.docker.internal:1234/v1` ⚠️ Note the `/v1`!
-   - Model Name: Copy exact name from LM Studio
+#### For New Providers (v0.9.8):
+- **CometAPI:** Set `COMETML_API_KEY` in Settings → API Keys
+- **Z.AI:** Configure via custom provider
+- **Moonshot AI:** Chinese model provider
+- **AWS Bedrock:** Requires AWS credentials
 
 **What NOT to do:**
-- ❌ Using `localhost` or `127.0.0.1` in Docker
-- ❌ Forgetting the `/v1` at the end (for LM Studio)
-- ❌ Typos in model names (copy exact names!)
-- ❌ Assuming no API key needed (some setups need a dummy key like "local")
+- ❌ Using `localhost` or `127.0.0.1` from Docker
+- ❌ Enabling LM Studio server without loading a model
+- ❌ Forgetting `/v1` for LM Studio
+- ❌ Typos in model names
 
 **Prevention:**
-- Always test with `curl` from your host machine first
-- Keep notes of exact model names
-- Back up your `settings.json` file
+- Always test with `curl` from host first
+- Copy exact model names, don't type from memory
+- Keep notes of working configurations
 
-**Sources:** [GitHub #756](https://github.com/agent0ai/agent-zero/issues/756), [GitHub #601](https://github.com/agent0ai/agent-zero/issues/601), [Discussion #357](https://github.com/agent0ai/agent-zero/discussions/357)
+**Sources:** [GitHub Issues](https://github.com/agent0ai/agent-zero/issues?q=connection), Official docs
 
-**Status:** ✅ Workaround Available | **Priority:** Critical
+**Status:** ✅ Mostly Solved | **Priority:** Medium
 
 ---
 
-### 2. Socket Closed Error
+### 2. Socket & WebSocket Errors
 
 **What you'll see:**
 ```
 OSError: Socket is closed
-[SYSTEM: Returning control to agent after 15 seconds...]
-Agent becomes unresponsive
+WebSocket connection dropped
+UI not updating in real-time
+Agent unresponsive after long task
 ```
 
 **Why it happens:**
-- Confirmed bug in `code_execution_tool` state management (GitHub #648, #680)
-- Long operations (>5 minutes) trigger connection timeout
-- Async SSH/terminal race condition
+- **SSH socket issues:** Terminal connection to container times out
+- **WebSocket drops (NEW in v0.9.8):** Real-time UI sync fails
+- Long-running operations (>5 minutes)
 - Docker networking drops idle connections
 
-**Status (v0.9.7):** Known bug in terminal subsystem, under active development. Stable workarounds available.
+**Status (v0.9.8):** Improved with WebSocket infrastructure, but SSH socket issues persist. Now two separate error types.
 
 **Fix step-by-step:**
 
+#### For SSH Socket Errors:
 1. **Immediate recovery:**
-   - In Agent Zero UI, type: "reset terminal"
+   - In Agent Zero UI, type: `reset terminal`
    - This restarts the terminal session
 
 2. **For long operations:**
-   - Break tasks into smaller chunks (<4 minutes each)
+   - Break tasks into <4 minute chunks
    - Ask agent to save progress frequently
-   - Example: "Process 100 files at a time, saving after each batch"
 
-3. **Docker configuration (Advanced):**
+3. **Container restart (if unresponsive):**
    ```bash
-   # When starting container, add SSH keepalive:
-   docker run -d -p 50080:80 \
-     -e SSH_KEEPALIVE_INTERVAL=60 \
-     --name agent-zero agent0ai/agent-zero
+   docker restart agent-zero
+   ```
+
+#### For WebSocket Connection Drops (NEW):
+1. **Check browser console:**
+   - Press F12 → Console tab
+   - Look for WebSocket errors
+
+2. **Refresh page:**
+   - Hard refresh: Ctrl+F5 (Windows) / Cmd+Shift+R (Mac)
+
+3. **Check firewall:**
+   - Ensure port 50080 allows WebSocket upgrades
+   - Some antivirus blocks WebSocket connections
+
+4. **Verify container logs:**
+   ```bash
+   docker logs agent-zero | grep -i websocket
    ```
 
 **What NOT to do:**
 - ❌ Ignoring "socket closed" warnings
-- ❌ Running operations longer than 5 minutes without checkpoints
+- ❌ Running operations >5 minutes without checkpoints
+- ❌ Using VPN that blocks WebSockets
 - ❌ Continuing to send commands after error appears
 
 **Prevention:**
 - Split large tasks into smaller subtasks
-- Use `screen` or `tmux` in container for long operations
-- Monitor with: `docker logs -f agent-zero | grep -i socket`
+- Use process groups to track progress (v0.9.8 UI feature)
 - Restart container periodically during heavy use
+- Monitor logs: `docker logs -f agent-zero`
 
-**Sources:** [GitHub #648](https://github.com/agent0ai/agent-zero/issues/648), Reddit r/LocalLLaMA
+**Sources:** [GitHub #648](https://github.com/agent0ai/agent-zero/issues/648), [#680](https://github.com/agent0ai/agent-zero/issues/680)
 
-**Status:** ⚠️ Unresolved (Workaround: Reset terminal) | **Priority:** Critical
+**Status:** ⚠️ SSH: Unresolved | WebSocket: New system | **Priority:** Critical
 
 ---
 
 ### 3. Data Loss on Crash/Restart
 
 **What you'll see:**
-- Chat history disappears
+- Chat history disappeared
 - Projects missing after restart
 - Files you created are gone
 - Corrupted backup files
 
 **Why it happens:**
-1. Docker containers are ephemeral by default
-2. Non-atomic file writes during crashes
-3. No automatic transaction logging
-4. Incorrect volume mapping
+- No persistent volume mapped (data only in ephemeral container)
+- Wrong volume mapping (using old `/a0` instead of `/a0/usr`)
+- Crashes during file writes
+
+**Status (v0.9.8):** **Fully preventable** with built-in Backup & Restore + correct volume mapping.
 
 **Fix step-by-step:**
 
-1. **Setup persistent storage (Do this FIRST!):**
+1. **Use built-in backup (PRIMARY METHOD):**
+   - Settings → Backup & Restore
+   - Click "Create Backup" before major work
+   - Download backup file (stores outside container)
+   - Test restore occasionally
+
+2. **Setup persistent storage (REQUIRED):**
    ```bash
-   # Stop existing container
-   docker stop agent-zero
-   docker rm agent-zero
+   # Stop container
+   docker stop agent-zero && docker rm agent-zero
    
-   # Create persistent directory on your computer
+   # Create directory on host
    mkdir -p ~/agent-zero-data
    
-   # Start with volume mapping
+   # Start with CORRECT volume mapping (v0.9.8)
    docker run -d -p 50080:80 \
      -v ~/agent-zero-data:/a0/usr \
+     --ulimit nofile=65536:65536 \
      --name agent-zero agent0ai/agent-zero
    ```
 
-2. **Enable built-in backups:**
-   - Settings → Backup & Restore
-   - Click "Create Backup" before any major work
-   - Store backup files outside Docker
-
-3. **Manual backup routine:**
+3. **Manual backup (secondary):**
    ```bash
    # Backup entire user directory
-   docker cp agent-zero:/a0/usr ~/backups/agent-zero-backup-$(date +%Y%m%d)
+   docker cp agent-zero:/a0/usr ~/backup-$(date +%Y%m%d)
    ```
 
-4. **For important projects, use Git:**
-   - Ask agent to initialize Git in project folder
-   - Commit after major changes
+4. **Restore from backup:**
+   - Settings → Backup & Restore → Upload backup file
+   - Or manual: `docker cp ~/backup agent-zero:/a0/usr`
 
 **What NOT to do:**
-- ❌ Running without persistent volumes
+- ❌ Running without any volume mapping
+- ❌ Mapping old `/a0` path (use `/a0/usr` in v0.9.8)
 - ❌ Trusting auto-save alone
-- ❌ Stopping container during active file writes
-- ❌ Mapping entire `/a0` directory (causes conflicts on updates)
-- ❌ Deleting old container before verifying backup
+- ❌ Deleting container before verifying backup
+- ❌ Storing backups only inside Docker
 
 **Prevention:**
-- **3-2-1 Backup Rule:** 3 copies, 2 different media, 1 offsite
-- Schedule automatic backups (hourly with cron)
-- Test restore process regularly
-- Use Settings → Backup before every update
+- **ALWAYS** map `/a0/usr` volume
+- Use Settings → Backup before updates
+- Follow 3-2-1 rule: 3 copies, 2 media types, 1 offsite
+- Test restore process monthly
 
-**Sources:** [GitHub #923](https://github.com/agent0ai/agent-zero/issues/923), [GitHub #935](https://github.com/agent0ai/agent-zero/issues/935)
+**Sources:** [GitHub #923](https://github.com/agent0ai/agent-zero/issues/923), Official migration docs
 
-**Status:** ⚠️ Unresolved (Prevention: proper volumes) | **Priority:** High (was Critical, downgraded - mostly preventable)
+**Status:** ✅ Fully Preventable (was Critical) | **Priority:** High
 
 ---
 
-### 4. Memory Recall TypeError (NoneType Concatenation)
-
-**What you'll see:**
-```
-TypeError: can only concatenate str (not "NoneType") to str
-File "/a0/models.py", line 118, in add_chunk
-  self.reasoning += processed_chunk["reasoning_delta"]
-```
-
-**Why it happens:**
-- Utility model returns `None` for `reasoning_delta` instead of string
-- Common with certain local models (Ollama/LM Studio)
-- Model doesn't consistently provide reasoning tokens
-- Parser doesn't handle non-standard output format
-
-**Recent reports (Jan 2026):** Affecting users with local utility models during memory recall operations.
-
-**Fix step-by-step:**
-
-1. **Update Agent Zero (recommended):**
-   ```bash
-   cd /path/to/agent-zero
-   git pull
-   docker-compose down && docker-compose up -d
-   ```
-   Recent updates made parser more resilient.
-
-2. **Switch utility model (quickest):**
-   - Settings → Model Configuration → Utility Model
-   - Change to robust model: `gpt-4o-mini` or `claude-3-5-haiku-latest`
-   - Utility models need reliable formatting compliance
-   - Test with simple memory recall
-
-3. **Manual code patch (if can't update):**
-   - Edit `python/agent_zero/models.py` line 118
-   - Change:
-     ```python
-     self.reasoning += processed_chunk["reasoning_delta"]
-     ```
-   - To:
-     ```python
-     self.reasoning += processed_chunk.get("reasoning_delta") or ""
-     ```
-   - This defaults to empty string if `None`
-
-**What NOT to do:**
-- ❌ Ignoring the error (breaks memory system)
-- ❌ Using unreliable models for utility tasks
-- ❌ Disabling memory entirely (loses agent capability)
-
-**Prevention:**
-- Use well-tested models for utility tasks
-- Keep Agent Zero updated
-- Test memory operations after model changes
-
-**Optimize Memory Performance:**
-
-```bash
-# In .env or config.json
-MEMORY_AUTO_RECALL_DELAYED=True
-MEMORY_QUERY_PREPARATION_ENABLED=True
-MEMORY_POST_FILTERING_ENABLED=False
-MEMORY_SIMILARITY_THRESHOLD=0.6  # Lower (0.5-0.6) for better recall
-MEMORY_AUTO_RECALL_INTERVAL=5    # Higher (5-10) to reduce costs
-```
-
-**Settings adjustments:**
-- **Lower similarity threshold** (0.5-0.6): Agent recalls more memories
-- **Increase history length** (15000): Better context for search queries
-- **Disable AI query prep**: Uses raw message as search (faster, cheaper)
-- **Increase recall interval** (5-10): Checks memory less frequently
-
-**Sources:** Agent Zero Discord Support Bot (Jan 2026), [docs/architecture.md](https://github.com/agent0ai/agent-zero/blob/main/docs/architecture.md)
-
-**Status:** ✅ Fixed in recent updates (Manual patch available) | **Priority:** High
-
----
-
-### 5. Memory System FAISS Errors
+### 4. Memory System FAISS Errors
 
 **What you'll see:**
 ```
 KeyError: 3687
-langchain_community.vectorstores.faiss.py: KeyError
-AssertionError: d == self.d
+AssertionError: d == self.d (1024 != 768)
 InvalidKeyException: Invalid characters in key
+Memory search fails
 ```
 
 **Why it happens:**
-1. Embedding model was changed without clearing old data
-2. FAISS index and document store are out of sync
-3. Model names contain special characters (`@` in model name)
-4. Mixed embedding dimensions from different models
+- Changed embedding model without clearing old index
+- Different embedding dimensions (old: 768, new: 1024)
+- FAISS index and document store out of sync
+- Special characters in model names (rare)
+
+**Status (v0.9.8):** Improved - memory operations now use deferred tasks, reducing errors under load.
 
 **Fix step-by-step:**
 
-1. **If you changed embedding model:**
+1. **Use Memory Management Dashboard (RECOMMENDED):**
+   - Settings → Memory Management
+   - Review stored memories
+   - Clear specific problematic entries
+   - More surgical than wiping everything
+
+2. **If changed embedding model:**
    ```bash
-   # Stop container
-   docker stop agent-zero
-   
-   # Clear memory (this deletes learned data!)
+   # Clear all memories (deletes learned data)
    docker exec agent-zero rm -rf /a0/memory/*
-   
-   # Restart
-   docker start agent-zero
+   docker restart agent-zero
    ```
 
-2. **For special character errors:**
-   - Change model name in settings
-   - Replace `@` with `-` in model names
-   - Example: `mxbai-embed-large@f32` → `mxbai-embed-large-f32`
+3. **For dimension mismatch:**
+   - Check current model dimensions:
+     - `mxbai-embed-large`: 1024
+     - `nomic-embed-text`: 768
+     - `text-embedding-3-small`: 1536
+   - If switched models, must clear memory
 
-3. **Complete memory reset (last resort):**
+4. **Complete reset (last resort):**
    ```bash
-   docker exec agent-zero sh -c "rm -rf /a0/memory/* /a0/knowledge_import.json"
+   docker exec agent-zero rm -rf /a0/memory/*
+   docker restart agent-zero
    ```
 
 **What NOT to do:**
 - ❌ Changing embedding model without clearing memory
-- ❌ Using model names with `@` characters (Linux)
+- ❌ Using model names with unusual characters
 - ❌ Mixing different embedding dimensions
-- ❌ Ignoring "assertion" errors
+- ❌ Ignoring dimension mismatch errors
 
 **Prevention:**
-- Stick with one embedding model
-- Before changing models:
-  1. Backup current memory
-  2. Clear memory directory
-  3. Switch model
-  4. Let agent rebuild gradually
+- Stick with one embedding model long-term
+- Before changing: Backup → Clear → Switch → Rebuild
+- Use Memory Management Dashboard weekly
 - Document your model configuration
 
-**Sources:** [GitHub #759](https://github.com/agent0ai/agent-zero/issues/759), [GitHub #615](https://github.com/agent0ai/agent-zero/issues/615), [GitHub #360](https://github.com/frdel/agent-zero/issues/360)
+**Note:** Many experienced users periodically clear `/a0/memory/` (weekly or monthly) to prevent index corruption. This is a known trade-off between persistence and stability.
 
-**Status:** ⚠️ Unresolved | **Priority:** Critical
+**Sources:** [GitHub #615](https://github.com/agent0ai/agent-zero/issues/615), [#759](https://github.com/agent0ai/agent-zero/issues/759)
+
+**Status:** ⚠️ Improved but unresolved | **Priority:** Critical
 
 ---
 
-## 🟡 High Priority Errors
+### 5. Skills System Errors (NEW in v0.9.8)
 
-### 5. File Descriptor Exhaustion
+**What you'll see:**
+```
+Skill import failed
+Invalid SKILL.md format
+Legacy Instrument not compatible
+Skill not found in registry
+```
+
+**Why it happens:**
+- **Skills replaced Instruments** in v0.9.8 (breaking change)
+- Trying to import old Instrument files
+- Invalid `SKILL.md` format
+- Missing required skill fields
+- Skill dependencies not met
+
+**Status (v0.9.8):** New system, teething issues expected.
+
+**Fix step-by-step:**
+
+1. **Import skills via UI (NEW):**
+   - Settings → Skills → Import Skill
+   - Upload `.skill` file or `SKILL.md`
+   - Or use built-in skills library
+
+2. **Convert legacy Instruments:**
+   - Old Instruments won't work directly
+   - Must be rewritten as Skills with `SKILL.md` format
+   - See official Skills documentation
+
+3. **Validate SKILL.md format:**
+   ```markdown
+   # Required fields:
+   ---
+   name: skill_name
+   description: Brief description
+   version: 1.0.0
+   author: your_name
+   ---
+   
+   # Skill content follows
+   ```
+
+4. **Check skill dependencies:**
+   - Some skills require specific tools
+   - Verify all dependencies installed
+   - Check logs: `docker logs agent-zero | grep -i skill`
+
+5. **List active skills:**
+   - Settings → Skills → Installed Skills
+   - Verify skill loaded successfully
+
+**What NOT to do:**
+- ❌ Trying to use old Instrument files
+- ❌ Manually editing system skill files
+- ❌ Installing untrusted skills (security risk)
+- ❌ Skipping skill validation
+
+**Prevention:**
+- Use official skills from library
+- Test new skills in isolated projects
+- Back up before installing custom skills
+- Keep skills updated
+
+**Sources:** [v0.9.8 Release Notes](https://github.com/agent0ai/agent-zero/releases/tag/v0.9.8), Skills documentation
+
+**Status:** 🆕 New System | **Priority:** Medium
+
+---
+
+### 6. Git Project Errors (NEW in v0.9.8)
+
+**What you'll see:**
+```
+Git clone failed
+Authentication required
+Permission denied (publickey)
+Failed to initialize submodules
+Repository not found
+```
+
+**Why it happens:**
+- Missing SSH keys for private repos
+- GitHub token not configured
+- Wrong repository URL
+- Insufficient permissions
+- Submodule authentication failures
+
+**Status (v0.9.8):** New Git-based projects feature.
+
+**Fix step-by-step:**
+
+#### For Public Repositories:
+1. **Use HTTPS URL:**
+   ```
+   https://github.com/username/repo.git
+   ```
+
+2. **Clone via UI:**
+   - Projects → New Project → Git Repository
+   - Paste URL and clone
+
+#### For Private Repositories:
+1. **Setup SSH key (recommended):**
+   ```bash
+   # Generate SSH key on host
+   ssh-keygen -t ed25519 -C "your_email@example.com"
+   
+   # Add to GitHub: Settings → SSH Keys
+   cat ~/.ssh/id_ed25519.pub
+   ```
+
+2. **Or use Personal Access Token:**
+   - GitHub → Settings → Developer Settings → Personal Access Tokens
+   - Generate token with `repo` scope
+   - Use URL: `https://TOKEN@github.com/username/repo.git`
+
+3. **Configure in Agent Zero:**
+   - Settings → Git Configuration
+   - Add SSH key or token
+   - Test connection
+
+#### For Submodule Errors:
+```bash
+# Inside container
+docker exec -it agent-zero bash
+cd /a0/projects/your_project
+git submodule update --init --recursive
+```
+
+**What NOT to do:**
+- ❌ Using SSH URL without SSH key setup
+- ❌ Hardcoding tokens in project files (security risk)
+- ❌ Cloning to wrong directory
+- ❌ Ignoring submodule errors
+
+**Prevention:**
+- Set up SSH keys once, use everywhere
+- Use Deploy Keys for specific repos
+- Test git access from host first
+- Document authentication setup
+
+**Sources:** [v0.9.8 Release Notes](https://github.com/agent0ai/agent-zero/releases/tag/v0.9.8)
+
+**Status:** 🆕 New Feature | **Priority:** Medium
+
+---
+
+### 7. Configuration Conflicts (NEW)
+
+**What you'll see:**
+```
+Settings not saving
+Configuration keeps reverting
+API keys disappearing
+Different settings in UI vs actual behavior
+```
+
+**Why it happens:**
+- **NEW in v0.9.8:** `A0_SET_*` environment variables override UI settings
+- Conflicts between `.env` file and UI configuration
+- Multiple configuration sources fighting each other
+- Migration from older versions
+
+**Status (v0.9.8):** New configuration system causes confusion.
+
+**Fix step-by-step:**
+
+1. **Understand configuration hierarchy:**
+   ```
+   Priority (highest to lowest):
+   1. A0_SET_* environment variables (.env or docker -e)
+   2. Settings UI
+   3. Default values
+   ```
+
+2. **Check for A0_SET_* variables:**
+   ```bash
+   # View all environment variables
+   docker exec agent-zero env | grep A0_SET
+   ```
+
+3. **Remove conflicting env vars:**
+   - Edit `.env` file or docker run command
+   - Remove any `A0_SET_*` variables you don't need
+   - Restart container
+
+4. **Use UI for most settings:**
+   - Settings → Agent Settings
+   - Settings → API Keys
+   - Changes persist in `/a0/usr/config.json`
+
+5. **Use A0_SET_* only for:**
+   - Docker deployment automation
+   - Secrets management
+   - Read-only production configs
+
+**Example conflict:**
+```bash
+# .env file has:
+A0_SET_CHAT_MODEL=gpt-4
+
+# UI shows llama3.2, but agent uses gpt-4
+# Fix: Remove A0_SET_CHAT_MODEL from .env
+```
+
+**What NOT to do:**
+- ❌ Setting same config in multiple places
+- ❌ Using A0_SET_* for everything
+- ❌ Editing config files while agent running
+- ❌ Ignoring "settings not saving" warnings
+
+**Prevention:**
+- Choose ONE configuration method
+- Document which settings use env vars
+- Test settings changes immediately
+- Check logs: `docker logs agent-zero | grep -i config`
+
+**Sources:** [v0.9.8 Release Notes](https://github.com/agent0ai/agent-zero/releases/tag/v0.9.8), Configuration docs
+
+**Status:** 🆕 New System | **Priority:** High
+
+---
+
+### 8. File Descriptor Exhaustion
 
 **What you'll see:**
 ```
 OSError: [Errno 24] Too many open files
+Browser tool fails to launch
 System becomes unstable
-Container needs restart
 ```
 
 **Why it happens:**
-- Confirmed bug: File descriptor leak in `browser_agent.py` (GitHub #906)
-- Browser tool doesn't properly close Chromium processes
-- Default Linux/Docker limit (1024) too low for prolonged use
+- Browser tool leaks file handles (confirmed bug)
+- Default limit (1024) too low for prolonged use
+- Long-running sessions
 - SQLite connections not released
 
-**Status (v0.9.7):** Known issue in browser agent. Fix may come in future releases.
+**Status (v0.9.8):** Still present, same fix as before.
 
 **Fix step-by-step:**
 
-1. **Immediate relief - kill zombie processes:**
+1. **Immediate relief:**
    ```bash
    docker exec agent-zero pkill -9 chrome
    docker exec agent-zero pkill -9 chromium
    ```
 
-2. **Permanent fix - increase limits:**
+2. **Permanent fix (restart with ulimit):**
    ```bash
-   # Stop container
-   docker stop agent-zero
-   docker rm agent-zero
+   docker stop agent-zero && docker rm agent-zero
    
-   # Restart with higher file descriptor limits
    docker run -d -p 50080:80 \
      --ulimit nofile=65536:65536 \
      --ulimit nproc=8192:8192 \
@@ -1707,97 +681,122 @@ Container needs restart
 
 3. **Monitor usage:**
    ```bash
-   # Check current file descriptor count
    docker exec agent-zero sh -c "ls /proc/1/fd | wc -l"
-   # If >800: Consider restart soon
+   # If >800: restart soon
    ```
 
 **What NOT to do:**
-- ❌ Running without `--ulimit nofile` settings
-- ❌ Keeping sessions alive >24 hours without restart
-- ❌ Running multiple browser instances simultaneously
-- ❌ Ignoring "too many files" warnings (leads to crash)
+- ❌ Running without `--ulimit` settings
+- ❌ Sessions >24 hours without restart
+- ❌ Running multiple browser instances
+- ❌ Ignoring warnings
 
 **Prevention:**
-- **Always** set `--ulimit nofile=65536:65536` when creating container
-- Schedule daily container restarts via cron (heavy browser use)
-- Clean temp files periodically:
-  ```bash
-  docker exec agent-zero find /tmp -type f -mtime +1 -delete
-  ```
-- Monitor with: `docker stats agent-zero`
-- Avoid browser-heavy tasks on low-spec systems
+- **Always** set ulimit when creating container
+- Schedule daily restarts for heavy browser use
+- Clean temp files: `docker exec agent-zero find /tmp -type f -mtime +1 -delete`
+- Monitor: `docker stats agent-zero`
 
-**Sources:** [GitHub #906](https://github.com/agent0ai/agent-zero/issues/906) (confirmed bug), [GitHub #681](https://github.com/agent0ai/agent-zero/issues/681)
+**Sources:** [GitHub #906](https://github.com/agent0ai/agent-zero/issues/906), [#681](https://github.com/agent0ai/agent-zero/issues/681)
 
-**Status:** ⚠️ Known Bug (Workaround: ulimit increase) | **Priority:** High
-
-**Note:** If browser tool implementation changes in future versions, FD leak may be resolved. Until then, ulimit workaround is reliable.
+**Status:** ⚠️ Known Bug | **Priority:** High
 
 ---
 
-### 6. Embedding Model Mismatch
+### 9. Startup Failures & Initialization Loops
 
 **What you'll see:**
 ```
-assert d == self.d
-Dimension mismatch error
-Vector search fails
+Container restarts repeatedly
+Stuck on "Initializing..."
+AttributeError on startup
+Import errors
+Migration failed
 ```
 
 **Why it happens:**
-- Changed embedding model without clearing FAISS database
-- Different embedding dimensions (old: 768, new: 1024)
-- FAISS expects consistent dimensions
+- Migration from <v0.9 to v0.9.8 failed
+- Corrupted config files
+- Missing required files
+- Permission errors on `/a0/usr`
+- Attribute errors (recent GitHub issues #474, #569)
+
+**Status (v0.9.8):** Migration issues during upgrades.
 
 **Fix step-by-step:**
 
-1. **Check current embedding model dimensions:**
-   - Common dimensions:
-     - `text-embedding-3-small` (OpenAI): 1536
-     - `mxbai-embed-large` (Ollama): 1024
-     - `text-embedding-ada-002` (OpenAI): 1536
-
-2. **Clear memory when changing models:**
+1. **Check logs:**
    ```bash
-   docker exec agent-zero rm -rf /a0/memory/*
+   docker logs agent-zero | tail -100
+   # Look for error messages
    ```
 
-3. **Verify in Settings:**
-   - Settings → Model Configuration → Embedding Model
-   - Note the exact model name and provider
-   - Don't change unless necessary!
+2. **Common AttributeError fix:**
+   ```bash
+   # Often caused by corrupted config
+   docker exec agent-zero rm /a0/usr/config.json
+   docker restart agent-zero
+   # Will rebuild config from defaults
+   ```
+
+3. **Clean migration:**
+   ```bash
+   # Backup first
+   docker cp agent-zero:/a0/usr ~/backup-$(date +%Y%m%d)
+   
+   # Remove and recreate
+   docker stop agent-zero && docker rm agent-zero
+   docker pull agent0ai/agent-zero:latest
+   docker run -d -p 50080:80 \
+     -v ~/agent-zero-data:/a0/usr \
+     --name agent-zero agent0ai/agent-zero
+   ```
+
+4. **Permission fix (Linux):**
+   ```bash
+   # If permission denied errors
+   sudo chown -R $USER:$USER ~/agent-zero-data
+   docker restart agent-zero
+   ```
+
+5. **Check port conflicts:**
+   ```bash
+   # Ensure 50080 is free
+   lsof -i :50080
+   # Or use different port: -p 50081:80
+   ```
 
 **What NOT to do:**
-- ❌ Changing embedding models frequently
-- ❌ Keeping old FAISS data when switching models
-- ❌ Using different models for different agents sharing memory
+- ❌ Force-killing container repeatedly
+- ❌ Editing files during startup
+- ❌ Mapping volumes from different versions
+- ❌ Running as root unnecessarily
 
 **Prevention:**
-- Choose one embedding model and stick with it
-- Document your choice
-- If you must change: backup → clear memory → switch → rebuild
+- Read migration notes before upgrading
+- Backup before major version jumps
+- Test migrations on separate instance
+- Keep logs of successful configurations
 
-**Sources:** [GitHub #759](https://github.com/agent0ai/agent-zero/issues/759), DeepWiki troubleshooting
+**Sources:** [GitHub #569](https://github.com/agent0ai/agent-zero/issues/569), [#474](https://github.com/agent0ai/agent-zero/issues/474)
 
-**Status:** ✅ Workaround Available | **Priority:** High
+**Status:** ⚠️ Ongoing | **Priority:** Critical
 
 ---
 
-### 7. Terminal Output Empty
+### 10. Terminal Output Empty
 
 **What you'll see:**
-- Commands execute but return no output
+- Commands run but return no output
 - "No output returned" message
-- Agent thinks command failed
-- Exit code 0 (success) but empty output
+- Exit code 0 (success) but empty results
 
 **Why it happens:**
-1. SSH session doesn't capture output properly
-2. Output buffer not flushed before session ends
-3. Environment variable conflicts in container
+- SSH session buffer not flushing
+- Output capture timing issues
+- Environment variable conflicts
 
-**Important:** This is different from complete terminal access loss (see note below).
+**Status (v0.9.8):** Improved with new local terminal interface and PowerShell support (Windows).
 
 **Fix step-by-step:**
 
@@ -1806,856 +805,448 @@ Vector search fails
    docker restart agent-zero
    ```
 
-2. **Use explicit markers in commands:**
+2. **Use explicit markers:**
    - Ask agent to add: `pwd && echo "__END__"`
-   - This ensures output is visible
+   - Ensures output is visible
 
 3. **Use full paths:**
    - Instead of `pwd`, use `/bin/pwd`
    - Instead of `ls`, use `/bin/ls -la`
 
-4. **Increase timeout (Advanced):**
-   - Edit initialization settings (if you have access)
-   - Increase default timeout to 120 seconds
+4. **For Windows (NEW in v0.9.4+):**
+   - PowerShell now supported
+   - Try switching terminal type in settings
 
 **What NOT to do:**
-- ❌ Assuming command failed when you see no output
-- ❌ Running same command repeatedly (makes it worse)
-- ❌ Modifying SSH protocol without backup
+- ❌ Assuming command failed (check exit code)
+- ❌ Running same command repeatedly
+- ❌ Modifying SSH config without backup
 
 **Prevention:**
+- Use verbose flags: `ls -la` vs `ls`
 - Verify exit codes, not just output
-- Use verbose flags: `ls -la` instead of `ls`
-- Set `SSH_TERM=xterm-256color` environment variable
+- Set `SSH_TERM=xterm-256color`
 
-**Sources:** [GitHub #106](https://github.com/agent0ai/agent-zero/issues/106), Skool forums
+**Sources:** [GitHub #106](https://github.com/agent0ai/agent-zero/issues/106)
 
-**Status:** ⚠️ Workaround Available | **Priority:** High
-
----
-
-**⚠️ Related: Complete Terminal Access Loss**
-
-**Separate issue (GitHub #106):** Agent loses ALL terminal access - cannot `ls`, cannot reboot terminal, files created earlier become inaccessible. This is more severe than just missing output.
-
-**If experiencing complete access loss:**
-1. This indicates a critical terminal session failure
-2. Container restart required: `docker restart agent-zero`
-3. May need to recreate container with fresh volumes
-4. Check logs: `docker logs agent-zero | tail -100`
-
-This is a known critical bug distinct from output buffering issues.
+**Status:** ⚠️ Improved | **Priority:** Medium
 
 ---
 
-## 🟢 Medium Priority Errors
-
-### 8. MCP Server Connection Failures
+### 11. Dev Tunnels & Remote Access (NEW)
 
 **What you'll see:**
 ```
-No active context found
-MCP tool execution fails
-Tools load but don't work
+Tunnel authentication failed
+Can't access Agent Zero remotely
+Connection refused from external IP
+Certificate errors
 ```
 
 **Why it happens:**
-- Confirmed limitation: No persistent session for remote MCP servers (GitHub #859)
-- Agent creates new connection per tool call instead of maintaining session
-- SSE (Server-Sent Events) session not maintained across requests
-- Architecture issue with remote MCP integration
+- Microsoft Dev Tunnels not configured (new in v0.9.8)
+- Firewall blocking tunnel
+- Authentication token missing
+- Security restrictions
 
-**Status (v0.9.7):** Known limitation. Expected to improve as MCP protocol matures.
+**Status (v0.9.8):** New remote access feature.
 
 **Fix step-by-step:**
 
-1. **Use local MCP servers (recommended):**
-   - More stable than remote servers
-   - No session management issues
+1. **Setup Dev Tunnel (Windows/VS Code):**
+   - Install devtunnel CLI
+   - Create tunnel: `devtunnel create -a`
+   - Start tunnel: `devtunnel start -p 50080`
 
-2. **For remote MCP servers:**
-   - Check server is actually running
-   - Verify URL and authentication token
-   - Test connection manually first
-   - Be aware this is currently unreliable
+2. **Verify tunnel:**
+   ```bash
+   devtunnel show
+   # Note the public URL
+   ```
 
-3. **Current limitation:**
-   - No official fix yet
-   - Wait for Agent Zero MCP improvements
-   - Or contribute to GitHub discussion
+3. **Configure Agent Zero:**
+   - Settings → Dev Tunnels
+   - Enter authentication token
+   - Enable remote access
+
+4. **Security settings:**
+   - Settings → Authentication
+   - Enable login requirement for remote access
+   - Set strong password
 
 **What NOT to do:**
-- ❌ Using multiple remote MCP servers simultaneously
-- ❌ Assuming tools work just because they loaded
-- ❌ Relying on remote MCP for critical workflows (until fixed)
+- ❌ Exposing without authentication
+- ❌ Using weak passwords for remote access
+- ❌ Exposing to public internet without firewall
+- ❌ Sharing tunnel URLs publicly
 
 **Prevention:**
-- Prefer local MCP server implementations
-- Monitor MCP server logs for connection issues
-- Report reproducible issues to developers with logs
+- Always require authentication
+- Use VPN for sensitive work
+- Monitor access logs
+- Rotate credentials regularly
+
+**Sources:** [v0.9.8 Release Notes](https://github.com/agent0ai/agent-zero/releases/tag/v0.9.8)
+
+**Status:** 🆕 New Feature | **Priority:** Medium
+
+---
+
+## 🟡 Medium Priority Errors
+
+### 12. Subagent Communication Failures (NEW)
+
+**What you'll see:**
+- Subagent not responding
+- Agent number conflicts
+- Memory not shared between agents
+- Crossed communication
+
+**Why it happens:**
+- New subagents system in v0.9.8
+- Agent profiles not configured
+- Memory isolation issues
+
+**Fix:**
+- Settings → Subagents → Configure Profiles
+- Ensure unique agent numbers
+- Check agent communication logs
+
+**Status:** 🆕 New Feature | **Priority:** Medium
+
+---
+
+### 13. UI File Editor Corruption (NEW)
+
+**What you'll see:**
+- File corrupted after browser edit
+- Save failed
+- Encoding issues
+
+**Why it happens:**
+- New in-browser file editor (v0.9.8)
+- Concurrent edits
+- Large files
+
+**Fix:**
+- Use external editor for critical files
+- Keep backups before editing
+- Avoid editing >10MB files in browser
+
+**Status:** 🆕 New Feature | **Priority:** Low
+
+---
+
+### 14. MCP Server Improvements
+
+**Status (v0.9.8):** Improved - streamable HTTP MCP servers now supported. Remote sessions more reliable.
+
+**What changed:**
+- Better session management
+- HTTP streaming support
+- Reduced timeout issues
+
+**Still problematic:**
+- Complex remote MCP setups
+- Some legacy MCP tools
 
 **Sources:** [GitHub #859](https://github.com/agent0ai/agent-zero/issues/859)
 
-**Status:** ⚠️ Known Limitation | **Priority:** Medium
+---
 
-**Note:** As MCP protocol evolves and Agent Zero's implementation improves, remote server reliability should increase.
+## 🖥️ Platform-Specific Setup (Updated for v0.9.8)
+
+### 💻 Low-Spec / Minimal System Setup
+
+**UPDATED Resource Requirements:**
+- **Absolute Minimum:** 2 cores, **8GB RAM** (was 6GB)
+- **Recommended:** 4 cores, 16GB RAM
+- **Why increased:** WebSocket infrastructure + Skills system overhead
+
+**Model Selection:**
+
+**For 8GB RAM systems:**
+```bash
+# Smallest viable models
+ollama pull qwen2.5:0.5b    # 395MB
+ollama pull phi3:mini       # 2.3GB
+ollama pull nomic-embed-text  # 274MB (embedding)
+```
+
+**For 12GB RAM systems:**
+```bash
+ollama pull llama3.2:3b     # ~2GB
+ollama pull qwen2.5:3b      # ~2GB  
+ollama pull mxbai-embed-large  # 670MB
+```
+
+**Docker Limits (8GB System):**
+```bash
+docker run -d -p 50080:80 \
+  -v ~/agent-zero-data:/a0/usr \
+  --memory="4g" \
+  --memory-swap="6g" \
+  --cpus="2" \
+  --add-host=host.docker.internal:host-gateway \
+  --name agent-zero agent0ai/agent-zero
+```
 
 ---
 
-### 9. Ollama Version Incompatibility
+### Windows Quick Start
 
-**What you'll see:**
-```
-405 Method Not Allowed
-OllamaException: 405
-API calls fail with newer Ollama versions
-```
+**Prerequisites:**
+- Windows 10/11 (64-bit)
+- 8GB RAM minimum (16GB recommended)
+- 25GB free disk space
 
-**Why it happens:**
-- Version-dependent compatibility between Ollama and Agent Zero
-- API endpoint changes in some Ollama versions
-- Specific Agent Zero versions may have issues with certain Ollama versions
+**Setup:**
 
-**Status (Jan 2026):** Largely resolved. Most users on Ollama ≥0.5.x + Agent Zero ≥v0.9.7 report no issues after updating both components.
+1. **Install Docker Desktop:**
+   - Download from https://docker.com
+   - Settings → Resources:
+     - CPUs: 4+
+     - Memory: 8GB+
+   - Apply & Restart
 
-**Fix step-by-step:**
+2. **Install Ollama:**
+   ```powershell
+   # Download from ollama.com
+   ollama pull llama3.2:3b
+   ollama pull mxbai-embed-large
+   ```
 
-1. **Update both components (recommended):**
+3. **Start Agent Zero (v0.9.8):**
+   ```powershell
+   docker run -d -p 50080:80 `
+     -v C:\agent-zero-data:/a0/usr `
+     --ulimit nofile=65536:65536 `
+     --name agent-zero agent0ai/agent-zero
+   ```
+
+4. **Configure:**
+   - Open http://localhost:50080
+   - Settings → Agent Settings
+   - API Base URL: `http://host.docker.internal:11434`
+   - Models: Use exact names from `ollama list`
+
+---
+
+### Linux Quick Start
+
+**Prerequisites:**
+- Ubuntu 20.04+ / Debian 11+
+- 8GB RAM minimum
+- 25GB free space
+
+**Setup:**
+
+1. **Install Docker:**
    ```bash
-   # Update Ollama
+   curl -fsSL https://get.docker.com | sh
+   sudo usermod -aG docker $USER
+   # Log out and back in
+   ```
+
+2. **Install Ollama:**
+   ```bash
    curl -fsSL https://ollama.com/install.sh | sh
-   
-   # Update Agent Zero
-   docker pull agent0ai/agent-zero:latest
-   docker stop agent-zero && docker rm agent-zero
-   # Restart with same command as before
+   ollama pull llama3.2:3b
+   ollama pull mxbai-embed-large
    ```
 
-2. **Check versions:**
+3. **Start Agent Zero (v0.9.8):**
    ```bash
-   ollama --version
-   docker exec agent-zero cat /a0/version.txt  # Agent Zero version
+   docker run -d -p 50080:80 \
+     -v ~/agent-zero-data:/a0/usr \
+     --add-host=host.docker.internal:host-gateway \
+     --ulimit nofile=65536:65536 \
+     --name agent-zero agent0ai/agent-zero
    ```
 
-3. **Verify compatibility:**
-   - Visit: https://github.com/agent0ai/agent-zero/releases
-   - Review release notes for Ollama compatibility
-   - Most combinations now work after updating
-
-4. **If still issues:**
-   - Report on GitHub with both version numbers
-   - Check if others report same combination
-
-**What NOT to do:**
-- ❌ Auto-updating Ollama without checking Agent Zero compatibility first
-- ❌ Assuming old downgrade advice still applies (mostly outdated)
-- ❌ Mixing very old Agent Zero with very new Ollama
-
-**Prevention:**
-- Update both components together
-- Test after updates
-- Check release notes before major version jumps
-
-**Sources:** [GitHub #819](https://github.com/agent0ai/agent-zero/issues/819)
-
-**Status:** ✅ Mostly Resolved (update both components) | **Priority:** Low (was Medium)
-
-**Note:** Early 2025 reports of 405 errors are largely historical. Current versions work together reliably.
+4. **Configure:**
+   - Settings → Agent Settings
+   - API Base URL: `http://host.docker.internal:11434`
 
 ---
 
-## 🤖 Self-Fix Prompt Templates
+### macOS Quick Start
 
-**Teach Agent Zero to diagnose and fix its own issues. Copy-paste these prompts.**
+**Prerequisites:**
+- macOS 11+ (Intel or Apple Silicon)
+- 8GB RAM minimum
 
----
+**Setup:**
 
-### Template #1: Connection Diagnostics
+1. **Install Docker Desktop:**
+   - Download from docker.com
+   - Settings → Resources:
+     - Memory: 8GB+
+     - CPUs: 4+
 
-```
-I'm experiencing connection issues. Please run this diagnostic sequence:
+2. **Install Ollama:**
+   ```bash
+   brew install ollama
+   ollama pull llama3.2:3b
+   ollama pull mxbai-embed-large
+   ```
 
-1. Check if you can access the terminal by running: echo "Terminal test"
-2. Test localhost connectivity: curl localhost:11434/api/tags
-3. Test host.docker.internal: curl http://host.docker.internal:11434/api/tags
-4. Check current API configuration in your settings
-5. List all environment variables containing "API" or "MODEL"
-6. Report findings and suggest configuration changes
-
-If any step fails, explain why and provide the fix command.
-```
-
----
-
-### Template #2: Memory System Check
-
-```
-I'm getting memory/FAISS errors. Please diagnose:
-
-1. Check if memory directory exists: ls -la /a0/memory/
-2. Count files in memory: find /a0/memory -type f | wc -l
-3. Check FAISS index file size: du -h /a0/memory/*.faiss
-4. Verify embedding model settings
-5. Test a simple memory save and recall operation
-
-If you detect dimension mismatches or index corruption, provide the command to clear memory safely.
-```
+3. **Start Agent Zero:**
+   ```bash
+   docker run -d -p 50080:80 \
+     -v ~/agent-zero-data:/a0/usr \
+     --ulimit nofile=65536:65536 \
+     --name agent-zero agent0ai/agent-zero
+   ```
 
 ---
 
-### Template #3: File Descriptor Audit
+## 🚨 Emergency Fix Cards
 
-```
-System seems unstable, possibly file descriptor issues. Check:
+### Card #1: Can't Connect to Ollama
 
-1. Count open file descriptors: ls /proc/1/fd | wc -l
-2. Show current ulimit: Run command to check nofile limit
-3. List zombie processes: ps aux | grep -E 'Z|defunct'
-4. Check for orphaned browser processes: ps aux | grep -i chrome
-5. Report current vs recommended limits
-
-Provide commands to kill zombies and fix ulimit if needed.
-```
-
----
-
-### Template #4: Docker Volume Verification
-
-```
-Verify data persistence setup:
-
-1. Check current working directory: pwd
-2. List mounted volumes: df -h | grep -E '/a0|agent'
-3. Test write permissions: echo "test" > /a0/usr/persistence-test.txt
-4. Read it back: cat /a0/usr/persistence-test.txt
-5. Check if /a0/usr is mapped to host (not ephemeral)
-
-Report if volumes are properly configured for persistence.
-```
-
----
-
-### Template #5: Complete Health Check
-
-```
-Run a complete system health check and report status:
-
-STEP 1 - Environment:
-- OS and kernel version
-- Available memory and disk space
-- Docker version and container uptime
-
-STEP 2 - Connectivity:
-- Test API endpoints (Ollama/OpenAI/etc)
-- Verify model names match available models
-- Check network latency to APIs
-
-STEP 3 - File System:
-- Count open file descriptors vs limit
-- Check /tmp directory size
-- Verify /a0/usr write access
-
-STEP 4 - Memory System:
-- Check FAISS index integrity
-- Verify embedding dimensions
-- Count stored memories
-
-STEP 5 - Recommendations:
-Based on findings, suggest specific fixes with exact commands.
-
-Format as a report with ✓ (pass) or ✗ (fail) for each check.
-```
-
----
-
-### Template #6: Terminal Session Recovery
-
-```
-My terminal seems broken (no output or socket errors). Please:
-
-1. Test if terminal is responsive: pwd && echo "__MARKER__"
-2. Check SSH session status
-3. Verify environment variables: env | grep -E 'TERM|SHELL|PATH'
-4. Test command execution with explicit paths: /bin/ls -la /a0
-5. If terminal is dead, explain how to reset it
-
-Use explicit output markers (echo "__START__" and echo "__END__") around commands.
-```
-
----
-
-### Template #7: Model Configuration Validator
-
-```
-Validate all model configurations:
-
-1. List currently configured models (chat, utility, embedding)
-2. For each model, verify:
-   - Provider is reachable
-   - Model name exists on provider
-   - API key is set (if required)
-   - Base URL format is correct
-3. Test each model with a simple query
-4. Report which models work and which fail
-
-Provide exact settings.json corrections for any failures.
-```
-
----
-
-### Template #8: Backup and Recovery
-
-```
-I need to backup my current state before troubleshooting:
-
-1. Create backup of /a0/usr directory
-2. Export current chat history
-3. Save current settings configuration
-4. List all active memories
-5. Create restore script with exact commands
-
-Provide download links or show me where backup files are stored.
-Then guide me through restoration process if needed.
-```
-
----
-
-### Template #9: Error Log Analysis
-
-```
-Analyze recent errors and crashes:
-
-1. Show last 50 lines of system logs
-2. Search logs for ERROR or CRITICAL entries
-3. Identify most frequent error types
-4. Check for patterns (time of day, specific operations)
-5. Cross-reference with known issues
-
-Summarize findings and link each error type to specific fix from documentation.
-```
-
----
-
-### Template #10: Performance Diagnostics
-
-```
-System is slow or unresponsive. Diagnose performance:
-
-1. Check CPU usage and load average
-2. Check memory usage (free vs used)
-3. Check disk I/O wait
-4. Count running processes and threads
-5. Identify resource-heavy processes
-6. Check for memory leaks (growing RAM usage over time)
-
-Recommend optimizations: kill heavy processes, increase resources, or restart container.
-```
-
----
-
-### Usage Tips for Self-Fix Prompts:
-
-**When to use:**
-- Before asking for human help
-- After any error message
-- During setup/configuration
-- Before and after updates
-- When performance degrades
-
-**How to use:**
-1. Copy entire template
-2. Paste into Agent Zero chat
-3. Let it run all checks
-4. Follow its recommendations
-5. Re-run to verify fixes worked
-
-**Pro tip:** Combine templates:
-```
-Run Template #5 (Complete Health Check), then based on findings, run the specific diagnostic template for any failures. Provide final summary with all fix commands.
-```
-
-**Make Agent Zero remember:**
-```
-Remember this diagnostic sequence. Whenever I say "health check", run Template #5 automatically.
-```
-
----
-
-### Template #11: Dependency Conflict Resolver
-
-```
-Check for conflicting dependencies:
-
-1. List installed Python packages: pip list
-2. Check for version conflicts: pip check
-3. Identify deprecated packages
-4. Test critical imports:
-   - import langchain
-   - import faiss
-   - import ollama
-   - Report any ImportError with details
-5. Provide pip commands to resolve conflicts
-
-If conflicts found, show exact pip install/upgrade commands.
-```
-
----
-
-### Template #12: Network Route Tracer
-
-```
-Trace network path to LLM provider:
-
-1. Ping host.docker.internal (should succeed)
-2. Test DNS resolution: nslookup api.openai.com
-3. Check firewall: curl -v http://host.docker.internal:11434
-4. Test actual API endpoint with headers
-5. Measure response time and identify bottlenecks
-
-Report: connection time, DNS time, first byte time.
-If failures, pinpoint exact network layer.
-```
-
----
-
-### Template #13: Cache Cleaner
-
-```
-Clear problematic caches safely:
-
-1. Find all __pycache__ directories: find /a0 -type d -name __pycache__
-2. Check /tmp size: du -sh /tmp
-3. List contents: ls -lah /tmp | head -20
-4. Identify stale lock files: find /a0 -name "*.lock" -mtime +1
-5. Remove safe temp files (show commands, don't execute without confirmation)
-
-Estimate space to be freed and ask permission before deletion.
-```
-
----
-
-### Template #14: Permission Fixer
-
-```
-Diagnose and fix permission issues:
-
-1. Check ownership of /a0/usr: ls -la /a0/usr
-2. Find root-owned files: find /a0/usr -user root
-3. Check write permissions on critical dirs:
-   - /a0/usr
-   - /a0/memory
-   - /a0/tmp
-4. Test write access: touch /a0/usr/permission-test && rm /a0/usr/permission-test
-5. Provide exact chown/chmod commands if issues found
-
-Format: chown -R user:group /path && chmod -R 755 /path
-```
-
----
-
-### Template #15: Crash Recovery Protocol
-
-```
-After a crash, recover system state:
-
-1. Check for corrupted files:
-   - Validate all .json files in /a0/usr: find /a0/usr -name "*.json" -exec python -m json.tool {} \;
-   - Check backup integrity
-2. Identify incomplete operations:
-   - List files modified in last 10 minutes
-   - Check for .tmp or .partial files
-3. Review crash logs: show last 100 lines before crash
-4. List most recent changes: git log or file timestamps
-5. Provide recovery commands:
-   - Restore from last good backup
-   - Or repair corrupted files
-
-Create step-by-step recovery plan with rollback option.
-```
-
----
-
-## 🛠️ Troubleshooting Checklist
-
-When you encounter any error, follow this checklist:
-
-### Level 1: Basic Checks
-- [ ] Is Docker Desktop running?
-- [ ] Is the container actually running? (`docker ps`)
-- [ ] Can you access the UI? (http://localhost:50080)
-- [ ] Are API keys configured? (Settings → check all tabs)
-- [ ] Did you restart after configuration changes?
-
-### Level 2: Connection Checks
-- [ ] For local LLMs: Is Ollama/LM Studio running?
-- [ ] Test connection: `curl http://localhost:11434/api/tags` (Ollama)
-- [ ] Using `host.docker.internal` in Docker settings?
-- [ ] Firewall not blocking ports?
-
-### Level 3: Data Integrity
-- [ ] Do you have backups?
-- [ ] Is persistent volume mapped correctly?
-- [ ] Check disk space: `df -h`
-- [ ] Memory directory not corrupted?
-
-### Level 4: Container Health
-- [ ] Check logs: `docker logs agent-zero | tail -50`
-- [ ] File descriptors: `docker exec agent-zero sh -c "ls /proc/1/fd | wc -l"`
-- [ ] Restart: `docker restart agent-zero`
-
-### Level 5: Nuclear Option
-If all else fails:
 ```bash
-# 1. Create backup
-docker exec agent-zero tar -czf /tmp/backup.tar.gz /a0/usr
-docker cp agent-zero:/tmp/backup.tar.gz ~/agent-zero-emergency-backup.tar.gz
+docker stop agent-zero && docker rm agent-zero
 
-# 2. Complete reinstall
-docker stop agent-zero
-docker rm agent-zero
+docker run -d -p 50080:80 \
+  -v ~/agent-zero-data:/a0/usr \
+  --add-host=host.docker.internal:host-gateway \
+  --ulimit nofile=65536:65536 \
+  --name agent-zero agent0ai/agent-zero
+```
+
+**Then:** API Base URL = `http://host.docker.internal:11434`
+
+---
+
+### Card #2: Memory Errors
+
+```bash
+docker exec agent-zero rm -rf /a0/memory/*
+docker restart agent-zero
+```
+
+**Warning:** Deletes all learned memories
+
+---
+
+### Card #3: Complete Fresh Start
+
+```bash
+# 1. Backup via Settings → Backup & Restore
+
+# 2. Remove everything
+docker stop agent-zero && docker rm agent-zero
 docker pull agent0ai/agent-zero:latest
-docker run -d -p 50080:80 -v ~/agent-zero-data:/a0/usr --name agent-zero agent0ai/agent-zero
 
-# 3. Restore from backup via UI
+# 3. Fresh start (v0.9.8)
+docker run -d -p 50080:80 \
+  -v ~/agent-zero-data:/a0/usr \
+  --add-host=host.docker.internal:host-gateway \
+  --ulimit nofile=65536:65536 \
+  --name agent-zero agent0ai/agent-zero
+
+# 4. Restore from backup via UI
 ```
 
 ---
 
-## 📚 Additional Resources
-
-### Official Documentation
-- **Getting Started:** https://www.agent-zero.ai/p/docs/get-started/
-- **Troubleshooting:** https://github.com/agent0ai/agent-zero/blob/main/docs/troubleshooting.md
-- **Installation Guide:** https://github.com/agent0ai/agent-zero/blob/main/docs/installation.md
-
-### Community Support
-- **GitHub Issues:** https://github.com/agent0ai/agent-zero/issues
-- **GitHub Discussions:** https://github.com/agent0ai/agent-zero/discussions
-- **Agent Zero Website:** https://www.agent-zero.ai
-
-### Reporting New Issues
-When reporting issues on GitHub:
-1. Include Agent Zero version
-2. Include Docker version
-3. Describe your setup (OS, LLM provider)
-4. Paste relevant logs
-5. List what you've already tried
-
----
-
-## 🎓 Best Practices Summary
-
-### For Beginners
-
-1. **Start Simple:**
-   - Use OpenRouter or OpenAI first (easiest setup)
-   - Move to local LLMs (Ollama) once comfortable
-   - Don't try everything at once
-
-2. **Always Backup:**
-   - Before updates
-   - Before major tasks
-   - Weekly automatic backups
-   - Test restore procedure
-
-3. **Monitor Resources:**
-   - Keep Docker Desktop open to watch CPU/RAM
-   - Check disk space regularly
-   - Restart container if it slows down
-
-4. **Keep Notes:**
-   - Document your configuration
-   - Save working commands
-   - Track model names and settings
-
-### For Advanced Users
-
-1. **Container Management:**
-   - Use `docker-compose` for complex setups
-   - Set appropriate `ulimit` values
-   - Enable health checks
-   - Use restart policies
-
-2. **Performance Optimization:**
-   - Use GPU acceleration when available
-   - Optimize embedding model size
-   - Monitor and tune context windows
-   - Consider RAM disk for `/tmp`
-
-3. **Security:**
-   - Enable authentication before exposing to internet
-   - Use strong passwords
-   - Keep API keys secure
-   - Review logs for unusual activity
-
----
-
-## 📊 Error Priority Matrix
-
-| Error | Impact | Frequency | Difficulty | Status | Jan 2026 Notes |
-|-------|--------|-----------|------------|--------|----------------|
-| Socket Closed | Critical | Very High | Medium | Unresolved | #1 complaint 2025-2026 |
-| FAISS Memory Errors | Critical | High | Medium | Unresolved | Frequent when switching models |
-| Memory TypeError | High | Medium | Easy | Fixed (update) | Recent parser improvements |
-| Data Loss | High | Low | Easy | Preventable | Mostly config issue now |
-| Local LLM Connection | Medium | Low | Easy | Mostly Solved | Official docs improved |
-| File Descriptor Leak | High | Medium | Easy | Workaround | Set ulimit at start |
-| Terminal No Output | Medium | Low | Medium | Workaround | Less frequent lately |
-| MCP Connection | Medium | Low | Hard | Unresolved | Expected to improve |
-| Ollama 405 | Low | Very Low | Easy | Resolved | Update both components |
-
----
-
-## 🔍 Quick Reference: Common Commands
+### Card #4: Skills Won't Import
 
 ```bash
-# Check if container is running
-docker ps
+# Remove legacy instruments
+docker exec agent-zero rm -rf /a0/instruments/
 
-# View recent logs
-docker logs agent-zero | tail -50
-
-# Restart container
+# Restart
 docker restart agent-zero
 
-# Access container shell
-docker exec -it agent-zero /bin/bash
-
-# Backup user data
-docker cp agent-zero:/a0/usr ~/backup-$(date +%Y%m%d)
-
-# Check file descriptor usage
-docker exec agent-zero sh -c "ls /proc/1/fd | wc -l"
-
-# Kill zombie processes
-docker exec agent-zero pkill -9 chrome
-
-# Clean temp files
-docker exec agent-zero find /tmp -type f -mtime +1 -delete
-
-# Test Ollama connection (from host)
-curl http://localhost:11434/api/tags
-
-# Test LM Studio connection (from host)
-curl http://localhost:1234/v1/models
+# Re-import as Skills via UI
 ```
 
 ---
 
-## ❓ FAQ
+### Card #5: Settings Not Saving
 
-**Q: Should I use Ollama or LM Studio?**  
-A: For beginners, Ollama is easier. LM Studio has a nicer UI but requires manual model loading.
+```bash
+# Check for conflicting env vars
+docker exec agent-zero env | grep A0_SET
 
-**Q: How much RAM do I need?**  
-A: Minimum 8GB for small models (1B-3B parameters), 16GB+ recommended for 7B models.
-
-**Q: Can I use Agent Zero offline?**  
-A: Yes! Use Ollama with local models. You won't need any internet connection.
-
-**Q: My container keeps stopping. Why?**  
-A: Usually insufficient RAM or Docker resource limits. Increase in Docker Desktop settings.
-
-**Q: How do I know which model to use?**  
-A: Start with `llama3.2:1b` (small, fast) or `llama3.2` (better quality, slower).
-
-**Q: Is my data safe?**  
-A: Only if you set up persistent volumes and backups! Docker containers are ephemeral by default.
+# Remove from .env file, then:
+docker restart agent-zero
+```
 
 ---
 
-**Remember:** Agent Zero is actively developed. Join the community, report issues, and help improve the project!
+## 📚 Verified Issues (v0.9.8)
+
+### ✅ Confirmed Bugs
+
+| Error | GitHub Issue | Status | Severity |
+|-------|-------------|--------|----------|
+| Socket Closed (SSH) | [#648](https://github.com/agent0ai/agent-zero/issues/648), [#680](https://github.com/agent0ai/agent-zero/issues/680) | Open | Critical |
+| FAISS Memory Errors | [#615](https://github.com/agent0ai/agent-zero/issues/615), [#759](https://github.com/agent0ai/agent-zero/issues/759) | Open | Critical |
+| File Descriptor Leak | [#906](https://github.com/agent0ai/agent-zero/issues/906) | Open | High |
+| Terminal Output Empty | [#106](https://github.com/agent0ai/agent-zero/issues/106) | Improved | Medium |
+| Startup Loops | [#569](https://github.com/agent0ai/agent-zero/issues/569), [#474](https://github.com/agent0ai/agent-zero/issues/474) | Open | Critical |
+| Browser Tool Issues | [#723](https://github.com/agent0ai/agent-zero/issues/723) | Open | High |
+
+### 🆕 New in v0.9.8
+- Skills import failures
+- Git project authentication
+- WebSocket connection drops
+- Configuration conflicts (`A0_SET_*`)
+- Migration issues
+- Subagent communication
 
 ---
 
-## 📚 Verified vs Unverified Issues
-
-### ✅ Confirmed Bugs (Official GitHub Issues)
-
-These errors have verified GitHub issue numbers and are acknowledged by maintainers:
-
-| Error | GitHub Issue | Status (Jan 2026) | Severity | Notes |
-|-------|-------------|-------------------|----------|-------|
-| Socket Closed (OSError) | [#648](https://github.com/agent0ai/agent-zero/issues/648), [#680](https://github.com/agent0ai/agent-zero/issues/680) | Open - Active | Critical | Top complaint 2025-2026 |
-| FAISS Memory Errors | [#615](https://github.com/agent0ai/agent-zero/issues/615), [#759](https://github.com/agent0ai/agent-zero/issues/759) | Open | Critical | When switching models |
-| File Descriptor Leak | [#906](https://github.com/agent0ai/agent-zero/issues/906), [#681](https://github.com/agent0ai/agent-zero/issues/681) | Open | High | Browser tool bug |
-| Terminal Access Loss | [#106](https://github.com/agent0ai/agent-zero/issues/106) | Open | High | Separate from output buffering |
-| MCP Session Issues | [#859](https://github.com/agent0ai/agent-zero/issues/859) | Open | Medium | Improving with MCP maturity |
-| Ollama 405 Errors | [#819](https://github.com/agent0ai/agent-zero/issues/819) | Mostly Resolved | Low | Update both components |
-
-### ⚠️ Community-Reported (Needs Verification)
-
-These are based on community reports but lack official issue tracking:
-
-- **Memory recall TypeError** - Addressed in recent parser updates (Jan 2026)
-- **Data loss on crash** - Multiple anecdotal reports, mostly configuration issue with volumes
-- **Embedding model special characters** - Linux edge case, inconsistently reproduced
-- **Docker volume mapping conflicts** - Setup misconfiguration, well-documented now
-
-### 📈 What Improved Since v0.9.7
-
-Based on community reports and issue tracking (Nov 2024 - Jan 2026):
+## 🎓 What Improved in v0.9.8
 
 **Resolved/Improved:**
-- ✅ Local LLM connection setup (official docs now clear)
-- ✅ Ollama 405 errors (update both components)
-- ✅ Memory recall TypeError (parser resilience)
-- ✅ Data persistence awareness (volume mapping emphasized)
+- ✅ Built-in Backup & Restore (Settings)
+- ✅ User data in `/usr` (cleaner separation)
+- ✅ Memory operations deferred (better performance)
+- ✅ Real-time WebSocket UI (no more polling)
+- ✅ Process groups (better error visibility)
+- ✅ MCP improvements (HTTP streaming)
+- ✅ PowerShell support (Windows terminals)
 
 **Still Problematic:**
-- ❌ Socket closed during long operations (#648 - most reported)
-- ❌ FAISS corruption when rapidly switching models
-- ❌ Browser tool file descriptor leaks (#906)
-- ❌ Occasional terminal hangs on specific operations
-
-**Maintenance Note:** Check [Agent Zero Issues](https://github.com/agent0ai/agent-zero/issues) with keywords: "OSError", "socket", "FAISS", "KeyError", "crash", "hang" for current status. This guide should be refreshed every 2-3 months.
+- ❌ SSH socket closed during long operations
+- ❌ FAISS corruption when switching models
+- ❌ Browser file descriptor leaks
+- ❌ Startup initialization loops
 
 ---
 
-## 📚 Appendix: Diagnostic Tools
+## 📖 Appendix
 
-### Full Validation Script
+### Quick Reference Commands
 
-**Complete automated health check (save as `validate-agent-zero.sh`):**
-
+**Diagnostic:**
 ```bash
-#!/bin/bash
-
-echo "🔍 Agent Zero Setup Validator"
-echo "=============================="
-echo ""
-
-ERRORS=0
-WARNINGS=0
-
-# Color codes
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# Function to check status
-check() {
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓${NC} $1"
-    else
-        echo -e "${RED}✗${NC} $1"
-        ((ERRORS++))
-    fi
-}
-
-warn() {
-    echo -e "${YELLOW}⚠${NC} $1"
-    ((WARNINGS++))
-}
-
-# Docker checks
-echo "📦 Checking Docker..."
-docker --version > /dev/null 2>&1
-check "Docker installed"
-
-docker ps > /dev/null 2>&1
-check "Docker running"
-
-CPUS=$(docker info 2>/dev/null | grep "CPUs" | awk '{print $2}')
-if [ "$CPUS" -ge 4 ]; then
-    echo -e "${GREEN}✓${NC} Docker CPUs: $CPUS"
-else
-    warn "Docker CPUs: $CPUS (recommend 4+)"
-fi
-
-MEM=$(docker info 2>/dev/null | grep "Total Memory" | awk '{print $3}')
-echo -e "${GREEN}✓${NC} Docker Memory: $MEM"
-
-# Port check
-echo ""
-echo "🔌 Checking Port 50080..."
-curl -s localhost:50080 > /dev/null 2>&1
-if [ $? -ne 0 ]; then
-    echo -e "${GREEN}✓${NC} Port 50080 available"
-else
-    echo -e "${RED}✗${NC} Port 50080 already in use"
-    ((ERRORS++))
-fi
-
-# Ollama checks
-echo ""
-echo "🤖 Checking Ollama..."
-ollama --version > /dev/null 2>&1
-check "Ollama installed"
-
-ollama list > /dev/null 2>&1
-check "Ollama running"
-
-curl -s http://localhost:11434/api/tags > /dev/null 2>&1
-check "Ollama API responding"
-
-if ollama list 2>/dev/null | grep -q "llama3.2"; then
-    echo -e "${GREEN}✓${NC} Model: llama3.2 installed"
-else
-    warn "Model: llama3.2 not found (run: ollama pull llama3.2:1b)"
-fi
-
-if ollama list 2>/dev/null | grep -q "mxbai-embed-large"; then
-    echo -e "${GREEN}✓${NC} Model: mxbai-embed-large installed"
-else
-    warn "Model: mxbai-embed-large not found (run: ollama pull mxbai-embed-large)"
-fi
-
-# Disk space
-echo ""
-echo "💾 Checking Disk Space..."
-SPACE=$(df -h / | tail -1 | awk '{print $4}' | sed 's/G//')
-if [ "${SPACE%.*}" -ge 20 ]; then
-    echo -e "${GREEN}✓${NC} Free space: ${SPACE}G"
-else
-    warn "Free space: ${SPACE}G (recommend 20G+)"
-fi
-
-# Memory
-echo ""
-echo "🧠 Checking Memory..."
-if command -v free > /dev/null 2>&1; then
-    FREE_MEM=$(free -h | grep Mem | awk '{print $7}')
-    echo -e "${GREEN}✓${NC} Free RAM: $FREE_MEM"
-fi
-
-# Ulimit
-echo ""
-echo "📂 Checking File Descriptor Limit..."
-ULIMIT=$(ulimit -n)
-if [ "$ULIMIT" -ge 4096 ]; then
-    echo -e "${GREEN}✓${NC} File descriptor limit: $ULIMIT"
-elif [ "$ULIMIT" -ge 1024 ]; then
-    warn "File descriptor limit: $ULIMIT (recommend 65536)"
-else
-    echo -e "${RED}✗${NC} File descriptor limit: $ULIMIT (too low!)"
-    ((ERRORS++))
-fi
-
-# Summary
-echo ""
-echo "=============================="
-if [ $ERRORS -eq 0 ] && [ $WARNINGS -eq 0 ]; then
-    echo -e "${GREEN}✓ READY TO START${NC}"
-    echo "All checks passed! You can start Agent Zero."
-elif [ $ERRORS -eq 0 ]; then
-    echo -e "${YELLOW}⚠ READY WITH WARNINGS${NC}"
-    echo "$WARNINGS warning(s) found. Agent Zero will work but may have issues under heavy load."
-else
-    echo -e "${RED}✗ NOT READY${NC}"
-    echo "$ERRORS error(s) and $WARNINGS warning(s) found."
-    echo "Fix the errors above before starting Agent Zero."
-    exit 1
-fi
+docker stats agent-zero
+docker logs agent-zero | tail -50
+docker exec agent-zero ls -lh /a0/memory/
 ```
 
-**Usage:**
+**Backup:**
 ```bash
-chmod +x validate-agent-zero.sh
-./validate-agent-zero.sh
+# Primary: Use Settings → Backup & Restore
+# Manual:
+docker cp agent-zero:/a0/usr ~/backup-$(date +%Y%m%d)
+```
+
+**Emergency:**
+```bash
+docker restart agent-zero
+docker logs agent-zero | grep -i error
 ```
 
 ---
 
-**Last Updated:** January 21, 2026
+**Last Updated:** February 11, 2026  
+**Guide Version:** 2.0 (v0.9.8)  
+**Maintenance:** Review after each Agent Zero release
+
+**Remember:** Always backup before troubleshooting. Use Settings → Backup & Restore as your primary protection.
